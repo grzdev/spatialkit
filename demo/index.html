@@ -1,0 +1,562 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥽</text></svg>" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="SpatialKit — Open-source WebXR spatial UI framework for smart glasses and AR experiences" />
+    <title>SpatialKit — AR/3D Framework Demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --purple: #6c63ff;
+        --pink: #ff6584;
+        --dark: #07071a;
+        --dark-2: #0d0d2b;
+        --glass: rgba(255, 255, 255, 0.04);
+        --glass-border: rgba(255, 255, 255, 0.08);
+        --text: #e8e8ff;
+        --text-muted: rgba(232, 232, 255, 0.5);
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: 'Inter', system-ui, sans-serif;
+        background: var(--dark);
+        color: var(--text);
+      }
+
+      /* ─── Canvas fills full viewport ─── */
+      #sk-canvas-container {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+      }
+
+      #sk-canvas-container canvas {
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
+      }
+
+      /* ─── UI overlay ─── */
+      #sk-ui {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        pointer-events: none;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* ─── Header ─── */
+      #sk-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 20px 28px;
+        background: linear-gradient(to bottom, rgba(7,7,26,0.9), transparent);
+        pointer-events: auto;
+      }
+
+      .sk-logo {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .sk-logo-icon {
+        width: 36px;
+        height: 36px;
+        background: linear-gradient(135deg, var(--purple), var(--pink));
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        font-weight: 800;
+        color: white;
+        box-shadow: 0 0 20px rgba(108, 99, 255, 0.5);
+      }
+
+      .sk-logo-text {
+        font-size: 18px;
+        font-weight: 700;
+        background: linear-gradient(90deg, var(--purple), var(--pink));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .sk-version {
+        font-size: 11px;
+        color: var(--text-muted);
+        background: var(--glass);
+        border: 1px solid var(--glass-border);
+        padding: 3px 8px;
+        border-radius: 20px;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+      }
+
+      /* ─── Status bar ─── */
+      #sk-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+
+      .sk-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #2ecc71;
+        animation: pulse-dot 2s ease-in-out infinite;
+      }
+
+      .sk-dot.loading {
+        background: #f39c12;
+      }
+
+      .sk-dot.error {
+        background: #e74c3c;
+        animation: none;
+      }
+
+      @keyframes pulse-dot {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(0.8); }
+      }
+
+      /* ─── Controls sidebar ─── */
+      #sk-controls {
+        position: absolute;
+        right: 24px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        pointer-events: auto;
+      }
+
+      .sk-control-btn {
+        width: 48px;
+        height: 48px;
+        border-radius: 14px;
+        background: var(--glass);
+        border: 1px solid var(--glass-border);
+        color: var(--text);
+        font-size: 18px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(12px);
+        transition: all 0.2s ease;
+        position: relative;
+      }
+
+      .sk-control-btn:hover {
+        background: rgba(108, 99, 255, 0.2);
+        border-color: var(--purple);
+        box-shadow: 0 0 16px rgba(108, 99, 255, 0.3);
+        transform: scale(1.05);
+      }
+
+      .sk-control-btn:active {
+        transform: scale(0.97);
+      }
+
+      .sk-control-btn.active {
+        background: rgba(108, 99, 255, 0.25);
+        border-color: var(--purple);
+      }
+
+      .sk-tooltip {
+        position: absolute;
+        right: 58px;
+        background: rgba(7, 7, 26, 0.95);
+        border: 1px solid var(--glass-border);
+        color: var(--text);
+        font-size: 12px;
+        padding: 5px 10px;
+        border-radius: 8px;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        font-family: 'Inter', sans-serif;
+      }
+
+      .sk-control-btn:hover .sk-tooltip {
+        opacity: 1;
+      }
+
+      /* ─── Bottom panel ─── */
+      #sk-bottom {
+        margin-top: auto;
+        padding: 24px 28px;
+        background: linear-gradient(to top, rgba(7,7,26,0.95), transparent);
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 16px;
+        pointer-events: auto;
+      }
+
+      .sk-info-card {
+        background: var(--glass);
+        border: 1px solid var(--glass-border);
+        backdrop-filter: blur(20px);
+        border-radius: 16px;
+        padding: 16px 20px;
+        max-width: 340px;
+        animation: slide-up 0.5s ease;
+      }
+
+      .sk-info-card h2 {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 6px;
+        letter-spacing: 0.3px;
+      }
+
+      .sk-info-card p {
+        font-size: 12px;
+        color: var(--text-muted);
+        line-height: 1.6;
+      }
+
+      .sk-info-card .sk-hint {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 10px;
+        font-size: 11px;
+        color: var(--purple);
+        font-weight: 500;
+      }
+
+      /* ─── Enter AR button ─── */
+      #sk-enter-ar-btn {
+        padding: 14px 28px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, var(--purple), var(--pink));
+        border: none;
+        color: white;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+        letter-spacing: 0.5px;
+        box-shadow: 0 4px 24px rgba(108, 99, 255, 0.4);
+        transition: all 0.3s ease;
+        white-space: nowrap;
+        font-family: 'Inter', sans-serif;
+        pointer-events: auto;
+        animation: glow-pulse 3s ease-in-out infinite;
+      }
+
+      #sk-enter-ar-btn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 32px rgba(108, 99, 255, 0.6);
+      }
+
+      #sk-enter-ar-btn:active:not(:disabled) {
+        transform: translateY(0);
+      }
+
+      @keyframes glow-pulse {
+        0%, 100% { box-shadow: 0 4px 24px rgba(108, 99, 255, 0.4); }
+        50% { box-shadow: 0 4px 32px rgba(255, 101, 132, 0.5); }
+      }
+
+      /* ─── Loading overlay ─── */
+      #sk-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        background: var(--dark);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        transition: opacity 0.5s ease;
+      }
+
+      #sk-loader.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .sk-spinner {
+        width: 56px;
+        height: 56px;
+        border: 3px solid var(--glass-border);
+        border-top-color: var(--purple);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      .sk-loader-text {
+        font-size: 14px;
+        color: var(--text-muted);
+        font-weight: 500;
+      }
+
+      .sk-loader-progress {
+        width: 200px;
+        height: 2px;
+        background: var(--glass-border);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+
+      .sk-loader-bar {
+        height: 100%;
+        background: linear-gradient(90deg, var(--purple), var(--pink));
+        width: 0%;
+        transition: width 0.3s ease;
+        border-radius: 2px;
+      }
+
+      /* ─── Progress ring (gaze dwell indicator) ─── */
+      #sk-gaze-ring {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 24px;
+        height: 24px;
+        pointer-events: none;
+        z-index: 20;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+
+      #sk-gaze-ring.visible {
+        opacity: 1;
+      }
+
+      /* ─── Feature tags ─── */
+      .sk-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 10px;
+      }
+
+      .sk-tag {
+        font-size: 10px;
+        padding: 3px 8px;
+        border-radius: 20px;
+        background: rgba(108, 99, 255, 0.12);
+        border: 1px solid rgba(108, 99, 255, 0.25);
+        color: var(--purple);
+        font-weight: 600;
+        letter-spacing: 0.3px;
+      }
+
+      @keyframes slide-up {
+        from { opacity: 0; transform: translateY(16px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      /* ─── Grid background ─── */
+      .sk-grid-bg {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        background-image:
+          linear-gradient(rgba(108, 99, 255, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(108, 99, 255, 0.03) 1px, transparent 1px);
+        background-size: 60px 60px;
+        mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+        pointer-events: none;
+      }
+
+      /* --- Camera permission banner --- */
+      #sk-cam-banner {
+        position: fixed;
+        top: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 30;
+        background: rgba(108, 99, 255, 0.15);
+        border: 1px solid rgba(108, 99, 255, 0.4);
+        backdrop-filter: blur(16px);
+        border-radius: 14px;
+        padding: 14px 22px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 13px;
+        color: var(--text);
+        pointer-events: auto;
+        animation: slide-up 0.4s ease;
+        white-space: nowrap;
+        box-shadow: 0 8px 32px rgba(108,99,255,0.2);
+        transition: opacity 0.4s ease;
+      }
+      #sk-cam-banner.hidden { opacity: 0; pointer-events: none; }
+      #sk-cam-banner.denied { border-color: rgba(255,101,132,0.5); background: rgba(255,101,132,0.1); }
+      #sk-cam-banner .sk-cam-icon { font-size: 20px; }
+      #sk-cam-banner p { margin: 0; }
+      #sk-cam-banner strong { color: var(--purple); }
+
+      /* --- Gesture overlay canvas --- */
+      #sk-gesture-overlay {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 5;
+        pointer-events: none;
+        transform: scaleX(-1); /* mirror so it matches natural movement */
+      }
+
+      /* --- Gesture status chip --- */
+      #sk-gesture-status {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 25;
+        background: rgba(10, 10, 30, 0.75);
+        border: 1px solid rgba(108,99,255,0.5);
+        backdrop-filter: blur(16px);
+        border-radius: 40px;
+        padding: 10px 22px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text);
+        pointer-events: none;
+        transition: opacity 0.5s ease, transform 0.3s ease;
+        white-space: nowrap;
+        letter-spacing: 0.3px;
+      }
+      #sk-gesture-status.hidden { display: none; }
+      #sk-gesture-status.fade  { opacity: 0; transform: translate(-50%, -52%); }
+    </style>
+  </head>
+  <body>
+    <!-- Grid background pattern -->
+    <div class="sk-grid-bg" aria-hidden="true"></div>
+
+    <!-- Three.js canvas container -->
+    <div id="sk-canvas-container" aria-label="3D model viewer"></div>
+
+    <!-- Gaze crosshair ring (XR mode) -->
+    <svg id="sk-gaze-ring" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" stroke="#6c63ff" stroke-width="1.5" stroke-dasharray="62.8" stroke-dashoffset="62.8">
+        <animate id="gaze-anim" attributeName="stroke-dashoffset" from="62.8" to="0" dur="2s" begin="indefinite" fill="freeze" />
+      </circle>
+      <circle cx="12" cy="12" r="2" fill="#6c63ff" opacity="0.7" />
+    </svg>
+
+
+
+    <!-- Gesture landmark overlay -->
+    <canvas id="sk-gesture-overlay" aria-hidden="true"></canvas>
+
+    <!-- Active gesture name indicator -->
+    <div id="sk-gesture-status" class="hidden" role="status" aria-live="polite">
+      <span id="sk-gesture-label">Loading hand tracking...</span>
+    </div>
+    <!-- Camera passthrough banner -->
+    <div id="sk-cam-banner" class="requesting" role="status" aria-live="polite">
+      <span class="sk-cam-icon">📷</span>
+      <p>Grant <strong>camera access</strong> to see the model in your real room</p>
+    </div>
+    <!-- Loading screen -->
+    <div id="sk-loader" role="status" aria-live="polite">
+      <div class="sk-spinner" aria-hidden="true"></div>
+      <p class="sk-loader-text" id="sk-loader-label">Initializing SpatialKit...</p>
+      <div class="sk-loader-progress" aria-hidden="true">
+        <div class="sk-loader-bar" id="sk-progress-bar"></div>
+      </div>
+    </div>
+
+    <!-- Main UI overlay -->
+    <div id="sk-ui" aria-label="SpatialKit controls">
+      <!-- Header -->
+      <header id="sk-header">
+        <div class="sk-logo">
+          <div class="sk-logo-icon" aria-hidden="true">S</div>
+          <span class="sk-logo-text">SpatialKit</span>
+          <span class="sk-version">v0.1.0</span>
+        </div>
+        <div id="sk-status" role="status" aria-live="polite">
+          <div class="sk-dot loading" id="sk-status-dot" aria-hidden="true"></div>
+          <span id="sk-status-text">Loading model...</span>
+        </div>
+      </header>
+
+      <!-- Sidebar controls -->
+      <div id="sk-controls" role="toolbar" aria-label="Model controls">
+        <button id="btn-rotate" class="sk-control-btn active" title="Toggle auto-rotate" aria-pressed="true" aria-label="Toggle auto-rotate">
+          ⟳
+          <span class="sk-tooltip">Auto-rotate</span>
+        </button>
+        <button id="btn-panel" class="sk-control-btn" title="Toggle info panel" aria-pressed="false" aria-label="Toggle spatial info panel">
+          ◫
+          <span class="sk-tooltip">Spatial Panel</span>
+        </button>
+        <button id="btn-wireframe" class="sk-control-btn" title="Toggle wireframe" aria-pressed="false" aria-label="Toggle wireframe view">
+          ⬡
+          <span class="sk-tooltip">Wireframe</span>
+        </button>
+        <button id="btn-reset" class="sk-control-btn" title="Reset camera" aria-label="Reset camera view">
+          ⊕
+          <span class="sk-tooltip">Reset view</span>
+        </button>
+      </div>
+
+      <!-- Bottom info + AR button -->
+      <footer id="sk-bottom">
+        <div class="sk-info-card" id="sk-info-card">
+          <h2 id="sk-model-name">Loading 3D Model...</h2>
+          <p id="sk-model-desc">SpatialKit WebXR framework — spatial UI toolkit for smart glasses</p>
+          <div class="sk-tags" id="sk-tags">
+            <span class="sk-tag">WebXR</span>
+            <span class="sk-tag">Three.js</span>
+            <span class="sk-tag">TypeScript</span>
+            <span class="sk-tag">AR</span>
+          </div>
+          <div class="sk-hint">
+            <span>🖱</span>
+            <span id="sk-hint-text">Drag to orbit · Scroll to zoom</span>
+          </div>
+        </div>
+        <!-- AR button injected here by XRSessionManager -->
+      </footer>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
+
+
+
