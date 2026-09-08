@@ -1,11 +1,22 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f5f5f0" />
-    <title>SpatialKit — Model inspector</title>
+    <meta name="theme-color" content="#f5f6f1" />
+    <title>SpatialKit — Model Inspector</title>
     <meta name="description" content="An interactive model inspector built with SpatialKit. Select parts, attach notes, and integrate the same components into your React app." />
+    <!-- Apply saved theme before React renders to prevent flash -->
+    <script>
+      try {
+        var t = localStorage.getItem('sk-theme');
+        if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
+        else if (window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.dataset.theme = 'dark';
+      } catch(e) {}
+    </script>
   </head>
-  <body><div id="root"></div><script type="module" src="/main.tsx"></script></body>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/main.tsx"></script>
+  </body>
 </html>
