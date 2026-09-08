@@ -355,7 +355,7 @@ function App() {
               </div>
             }
           >
-            <color attach="background" args={[theme === 'dark' ? '#1c2419' : '#efeee7']} />
+            <color attach="background" args={[theme === 'dark' ? '#111a2c' : '#e8eef8']} />
             <ambientLight intensity={1.2} />
             <hemisphereLight args={['#ffffff', '#687a69', 2]} />
             <directionalLight position={[4, 7, 5]} intensity={3.2} />
