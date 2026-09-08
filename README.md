@@ -1,356 +1,168 @@
-﻿<div align="center">
+# SpatialKit
 
-# 🥽 SpatialKit
+Composable selection and annotations for React Three Fiber.
 
-**A lightweight WebXR spatial UI framework for smart glasses and AR experiences.**
+SpatialKit adds part selection, highlighting, model metadata, and attached labels to an existing React 3D scene. This repository includes a working inspector with a local pump assembly, searchable parts, saved notes, and JSON export.
 
-Build gesture-controlled, 3D-augmented interfaces that overlay onto the real world —  
-in any browser, with zero proprietary hardware required.
+This is a local development preview; these changes have not been published to npm.
 
-[![npm version](https://img.shields.io/npm/v/spatialkit?color=6c63ff&label=npm)](https://www.npmjs.com/package/spatialkit)
-[![license](https://img.shields.io/github/license/grzdev/spatialkit?color=ff6584)](./LICENSE)
-[![three.js](https://img.shields.io/badge/three.js-≥0.150-black)](https://threejs.org/)
-[![WebXR](https://img.shields.io/badge/WebXR-ready-00c896)](https://immersiveweb.dev/)
-
-</div>
-
----
-
-## What is SpatialKit?
-
-SpatialKit is an open-source JavaScript/TypeScript library that gives web developers a simple, composable API to build **spatial AR applications** — experiences where 3D objects appear to float in the user's real environment.
-
-It was built with one use-case in mind: **smart glasses**. The kind where you look through transparent lenses and see your world overlaid with interactive 3D content. SpatialKit handles the hard parts:
-
-- 🌐 **WebXR sessions** — enter/exit immersive AR with one line
-- 📦 **3D model loading** — drop in any `.glb`/`.gltf` file
-- 🖥️ **Webcam passthrough** — simulate AR on any desktop or laptop
-- 🤌 **Hand gesture control** — real-time pinch-to-zoom, rotate, and two-hand scale via MediaPipe
-- 🪟 **Spatial panels** — floating HUD elements that always face the user
-- 👁️ **Gaze targeting** — raycast interaction from camera center (the smart glasses interaction model)
-
----
-
-## Installation
+## Try the inspector
 
 ```bash
-npm install spatialkit three
-```
-
-> **Optional** — add MediaPipe for hand gesture support:
-> ```bash
-> npm install @mediapipe/tasks-vision
-> ```
-
----
-
-## Quick Start
-
-Get a gesture-controlled 3D model floating in AR in under 15 lines:
-
-```ts
-import { SceneManager, ModelViewer } from 'spatialkit';
-
-// 1. Initialize the scene
-const scene = new SceneManager({
-  container: document.getElementById('app')!,
-  alpha: true,   // transparent background for AR overlay
-});
-
-// 2. Load a 3D model
-const viewer = new ModelViewer(scene.scene, scene.camera, scene.renderer, {
-  url: './my-model.glb',
-  autoRotate: true,
-  onLoad: () => console.log('Model ready!'),
-});
-
-// 3. Start the render loop
-scene.onUpdate((delta) => viewer.update(delta));
-scene.start();
-```
-
----
-
-## Webcam Passthrough (Desktop AR Preview)
-
-Simulate smart-glasses passthrough on any laptop — your webcam feed becomes the background, and 3D objects float in your real room:
-
-```ts
-import { SceneManager } from 'spatialkit';
-import * as THREE from 'three';
-
-const scene = new SceneManager({ container: document.getElementById('app')!, alpha: true });
-
-// Request webcam and use it as the scene background
-const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-const video = Object.assign(document.createElement('video'), {
-  srcObject: stream, autoplay: true, muted: true, playsInline: true,
-});
-await new Promise(r => video.onloadedmetadata = r);
-video.play();
-
-const videoTex = new THREE.VideoTexture(video);
-scene.scene.background = videoTex;  // ← real room now visible behind your 3D model
-```
-
----
-
-## Hand Gesture Control
-
-Add real-time hand tracking powered by MediaPipe — no API key, runs entirely in-browser:
-
-```ts
-import { GestureController } from 'spatialkit';
-import { globalBus } from 'spatialkit';
-
-const gestures = new GestureController({
-  video: webcamVideoElement,
-  overlayCanvas: document.getElementById('gesture-canvas') as HTMLCanvasElement,
-  onReady: () => console.log('✋ Hand tracking active'),
-});
-
-// Listen for gesture events
-globalBus.on('gesture:event', (data) => {
-  if (data.type === 'pinch-zoom')   camera.position.z -= data.delta * 0.3;
-  if (data.type === 'pinch-rotate') model.rotation.y   += data.delta * 0.05;
-  if (data.type === 'two-hand-scale') model.scale.setScalar(currentScale + data.delta);
-});
-```
-
-### Supported gestures
-
-| Gesture | Action emitted |
-|---|---|
-| 🤌 Pinch + move up/down | `pinch-zoom` |
-| 🤌 Pinch + move left/right | `pinch-rotate` |
-| 🤌🤌 Both hands pinch + spread | `two-hand-scale` |
-
----
-
-## Floating Spatial Panels
-
-Create HUD panels that always face the camera — the core UI primitive for smart glasses:
-
-```ts
-import { SpatialPanel } from 'spatialkit';
-
-const panel = new SpatialPanel({
-  title: '🔬 Object Info',
-  text: 'This panel floats in 3D space and always faces you.',
-  width: 2.5,
-  height: 1.0,
-  backgroundColor: 'rgba(10, 10, 30, 0.85)',
-  borderColor: '#6c63ff',
-});
-
-panel.setPosition(0, 1.5, -1.5);
-scene.add(panel.mesh);
-
-// In your animation loop:
-panel.update(camera);  // ← keeps it facing the user
-```
-
----
-
-## WebXR — True AR on Supported Devices
-
-On AR-capable devices (Android Chrome, Meta Quest Browser, Magic Leap), enter a true WebXR immersive session where the device hardware handles passthrough:
-
-```ts
-import { XRSessionManager } from 'spatialkit';
-
-const xr = new XRSessionManager(renderer, {
-  onStart: () => console.log('AR session started'),
-  onEnd:   () => console.log('AR session ended'),
-});
-
-// Check if this device supports AR
-const supported = await xr.isSupported();
-
-// Auto-create an "Enter AR" button
-xr.createEnterARButton(document.getElementById('controls')!);
-```
-
----
-
-## API Reference
-
-### `SceneManager`
-
-Core Three.js scene, camera, renderer, and animation loop.
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `container` | `HTMLElement` | `document.body` | Mount target for the canvas |
-| `background` | `THREE.Color \| null` | `null` | Scene background color (null = transparent) |
-| `antialias` | `boolean` | `true` | Enable antialiasing |
-| `alpha` | `boolean` | `true` | Transparent canvas (required for AR overlay) |
-
-| Method | Description |
-|---|---|
-| `start()` | Begin the render loop |
-| `stop()` | Stop the render loop |
-| `onUpdate(cb)` | Register frame callback `(delta: number) => void` |
-| `add(object)` | Add a Three.js object to the scene |
-| `remove(object)` | Remove an object |
-
----
-
-### `ModelViewer`
-
-Loads and displays a GLTF/GLB 3D model with orbit controls.
-
-| Option | Type | Description |
-|---|---|---|
-| `url` | `string` | URL to a `.glb` or `.gltf` model |
-| `targetSize` | `number` | Normalize model to this size (default: `1`) |
-| `autoRotate` | `boolean` | Continuously rotate the model |
-| `autoRotateSpeed` | `number` | Rotation speed (default: `1.5`) |
-| `enableOrbit` | `boolean` | Mouse/touch orbit controls |
-| `onLoad` | `(model) => void` | Called when model finishes loading |
-| `onProgress` | `(0-1) => void` | Loading progress callback |
-| `onError` | `(err) => void` | Called on load failure |
-
----
-
-### `SpatialPanel`
-
-Floating 3D panel rendered as a canvas texture.
-
-| Option | Type | Description |
-|---|---|---|
-| `title` | `string` | Bold header text |
-| `text` | `string` | Body text (auto word-wraps) |
-| `width` / `height` | `number` | Panel dimensions in 3D units |
-| `backgroundColor` | `string` | CSS color string |
-| `borderColor` | `string` | Accent border color |
-| `billboard` | `boolean` | Auto-face the camera (default: `true`) |
-
----
-
-### `GestureController`
-
-Real-time hand tracking via MediaPipe. Requires `@mediapipe/tasks-vision`.
-
-| Option | Type | Description |
-|---|---|---|
-| `video` | `HTMLVideoElement` | The webcam video element |
-| `overlayCanvas` | `HTMLCanvasElement` | Canvas for skeleton rendering |
-| `onReady` | `() => void` | Fires when model is loaded |
-| `onHandsDetected` | `(count: number) => void` | Fires every frame with hand count |
-
----
-
-### `GazeTarget`
-
-Raycasting from camera center — models the eye-gaze interaction pattern of smart glasses.
-
-```ts
-import { GazeTarget } from 'spatialkit';
-
-const gaze = new GazeTarget({
-  objects: [myMesh],
-  dwellTime: 1500, // ms to hold gaze before selecting
-  onGazeEnter: (obj) => highlightObject(obj),
-  onGazeSelect: (obj) => activateObject(obj),
-});
-
-// In animation loop:
-gaze.update(camera);
-```
-
----
-
-## Running the Demo Locally
-
-```bash
-git clone https://github.com/grzdev/spatialkit.git
-cd spatialkit
 npm install
-npm run demo
+npm run dev
 ```
 
-Open **https://localhost:5173/** — grant camera access to see your real room as the AR background.
+Open http://127.0.0.1:5173. Select a part in the model or assembly list, attach a note, and reload to see it restored. Notes are saved in this browser, not synced to a server. Export downloads a JSON copy; importing that file is not implemented yet.
 
----
+The original webcam experiment is available with `npm run demo:legacy`.
 
-## Building for Production
+## React integration
+
+The tested peer versions are React 18.3, React Three Fiber 8.18, Drei 9.122, and Three.js 0.167. React 19 / Fiber 9 support is not claimed in this preview.
+
+To try the current source in a separate application:
 
 ```bash
+# In this repository
 npm run build
+npm pack
+
+# In your React application (replace the path with the generated tarball)
+npm install /path/to/spatialkit-0.1.0.tgz
+npm install three@0.167 react@18 react-dom@18 @react-three/fiber@8 @react-three/drei@9
 ```
 
-Outputs to `dist/`:
-- `spatialkit.es.js` — ES module (Vite, Webpack, etc.)
-- `spatialkit.cjs.js` — CommonJS (Node.js, older bundlers)
-- `index.d.ts` — TypeScript declarations
+```tsx
+import { Suspense, useState } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls } from '@react-three/drei';
+import {
+  SpatialProvider,
+  SelectableModel,
+  Annotation,
+  type SpatialPart,
+} from 'spatialkit/react';
 
----
+export function Inspector() {
+  const [selectedPart, setSelectedPart] = useState<SpatialPart | null>(null);
 
-## Project Structure
-
+  return (
+    <>
+      <div style={{ height: 500 }}>
+        <Canvas camera={{ position: [5, 4, 5] }}>
+          <ambientLight intensity={1.5} />
+          <directionalLight position={[4, 7, 5]} intensity={3} />
+          <Suspense fallback={null}>
+            <SpatialProvider onSelectionChange={setSelectedPart}>
+              <SelectableModel src="/pump.glb" modelId="pump" />
+              <Annotation
+                target="pressure-valve"
+                label="Inspect this seal"
+              />
+            </SpatialProvider>
+          </Suspense>
+          <OrbitControls target={[0, 1, 0]} />
+        </Canvas>
+      </div>
+      <p>{selectedPart?.name ?? 'Select a part'}</p>
+    </>
+  );
+}
 ```
-spatialkit/
-├── src/                  # Library source (published to npm)
-│   ├── core/
-│   │   ├── SceneManager.ts    # Three.js scene + render loop
-│   │   ├── XRSession.ts       # WebXR session management
-│   │   └── EventBus.ts        # Internal pub/sub event system
-│   ├── components/
-│   │   ├── ModelViewer.ts     # GLTF/GLB model loader + controls
-│   │   ├── SpatialPanel.ts    # Floating HUD panel
-│   │   ├── GestureController.ts # MediaPipe hand tracking
-│   │   └── GazeTarget.ts      # Gaze/raycast interaction
-│   ├── utils/
-│   │   ├── Loader.ts          # GLTF loader + normalizer
-│   │   └── Math.ts            # Spatial math helpers
-│   └── index.ts               # Public API entry point
-├── demo/                 # Showcase app (not published)
-│   ├── index.html
-│   ├── main.ts
-│   └── vite.config.ts
-├── dist/                 # Build output
-└── README.md
+
+Copy `examples/inspector/public/pump.glb` into your application's public directory to use this example. Your own model works too: annotation targets must match its mesh names or explicit ids. Mount an error boundary around loading components in production; the inspector example includes one. Camera framing, lighting, and controls remain yours to configure.
+
+### `SpatialProvider`
+
+Place inside your existing `<Canvas>`. Each provider owns an isolated part registry and selection state; no global event bus is used by the React entry point. `onSelectionChange(part)` fires on selection changes, including `null` when selection is cleared or the selected model unmounts. It does not fire an initial empty selection.
+
+The selection is a data object:
+
+```ts
+interface SpatialPart {
+  id: string;       // e.g. "pump/pressure-valve"
+  modelId: string;  // "pump"
+  name: string;    // mesh name from glTF
+  metadata: Record<string, unknown>; // node extras
+}
 ```
 
----
+Use that context in your application state, backend, or AI request. SpatialKit does not call an AI service or manage credentials.
 
-## Roadmap
+### `SelectableModel`
 
-- [ ] AR Navigation HUD module (floating compass, waypoints, distance rings)
-- [ ] Spatial Radial Menu component
-- [ ] Hit-test surface detection (place objects on real floors/tables)
-- [ ] Voice command integration
-- [ ] React wrapper (`@spatialkit/react`)
-- [ ] CDN build (no bundler required)
+| Prop | Behavior |
+| --- | --- |
+| `src` | Required GLB/GLTF URL. Suspends while loading; loader failures reach the enclosing error boundary. |
+| `modelId` | Defaults to `src`. Use a stable, unique id when saving notes or mounting multiple instances of a model. |
+| `position`, `rotation` | Optional `[x, y, z]`; rotations are radians. |
+| `scale` | Optional number or `[x, y, z]`. Asset units are preserved. |
+| `highlightColor` | Hover/selection color; defaults to `#58ddba`. |
+| `configureLoader` | Optional stable `(loader: GLTFLoader) => void` to configure decoders/plugins. |
 
----
+Selection is at mesh level. Each mesh's part id uses `modelId` plus, in priority order, `extras.spatialId`, a unique mesh name, or a deterministic node path. Duplicate explicit ids throw. Paths can change when an asset hierarchy changes, so author explicit ids for long-lived annotations. Named groups are not selectable parts in this preview.
 
-## Contributing
+Model instances clone transforms and materials. Highlighting one instance does not change another. Loader-cached geometry and textures are shared and never disposed by SpatialKit; cloned materials are disposed on unmount. Animation playback is not implemented.
 
-Contributions are very welcome! SpatialKit was built to give the AR/WebXR community a free, open toolkit.
+### `Annotation`
 
-1. Fork the repo
-2. Create a feature branch: `git checkout -b feature/my-component`
-3. Make your changes in `src/`
-4. Add an example in `demo/`
-5. Open a pull request
+| Prop | Behavior |
+| --- | --- |
+| `target` | Required scoped part id, unique mesh name, or explicit part key. |
+| `modelId` | Optional qualifier when names occur in more than one model. |
+| `label` | Text content. |
+| `children` | Custom React content, taking precedence over `label`. |
+| `offset` | World-space `[x, y, z]` offset from the mesh bounding-box centre; defaults to `[0, 0.3, 0]`. |
+| `selectedOnly` | Show only while the target is selected; defaults to false. |
+| `className`, `style` | Customize the label. |
 
-Please open an issue first for large changes so we can discuss the approach.
+Annotations track transforms and project into the browser DOM using Drei's `Html`. They are display-only by default, remain visible through geometry, and do not avoid overlaps automatically. Missing or ambiguous targets render nothing; a full part id or `modelId` disambiguates. No hardcoded `pressure-valve` behavior is built into the library.
 
----
+**These annotations are browser overlays, not immersive WebXR UI.** Webcam imagery does not provide real-world anchoring. Hardware hand tracking, surface placement, occlusion, and true eye tracking are outside this React release.
 
-## License
+### `useSpatial()`
 
-[MIT](./LICENSE) — free to use in personal and commercial projects.
+Call inside `SpatialProvider`:
 
----
+```tsx
+const { parts, selectedPart, select, clearSelection } = useSpatial();
+select('pump/pressure-valve');
+select('pressure-valve', 'pump');
+clearSelection();
+```
 
-<div align="center">
+`parts` contains registered mesh metadata. Unknown/ambiguous selections clear selection. In the inspector, a small bridge exposes this API to the DOM parts list. Use the same approach to connect a toolbar outside the canvas. The example also clears selection on a missed canvas click and Escape; those are application policies, not global library listeners.
 
-Built with ❤️ for the spatial computing community
+## Package entry points
 
-[npm](https://www.npmjs.com/package/spatialkit) · [GitHub](https://github.com/grzdev/spatialkit) · [Demo](https://your-demo-url.com)
+| Import | Purpose |
+| --- | --- |
+| `spatialkit/react` | React components and hook; requires React, Fiber, Drei, and Three.js. |
+| `spatialkit` | Existing vanilla Three.js scene/model/panel and basic WebXR helpers. |
+| `spatialkit/gestures` | Optional webcam adapter; requires `@mediapipe/tasks-vision`. |
 
-</div>
+**Migration from the earlier source:** import `GestureController` and its types from `spatialkit/gestures`. Removing that export from the root keeps MediaPipe out of core and React imports. Root helpers still use the legacy global bus; do not confuse them with the isolated React provider. Prefer the ESM entry points for browser bundlers.
 
+## Develop and verify
+
+```bash
+npm run typecheck
+npm test
+npm run build:example
+npm run test:package
+```
+
+`build:example` builds the library and then builds the inspector against the package's public exports, rather than a source alias. During development, the source alias enables hot reload. Regression tests cover provider isolation, removal of selected models, material ownership, ambiguous targets, stable ids, transformed attachments, and saved-note validation.
+
+`scripts/create-demo-model.mjs` generates the original demo asset without a download. Run it with Node to regenerate `examples/inspector/public/pump.glb`. This illustrative assembly is not an engineering model or maintenance guide.
+
+## Next milestones
+
+- Validate selection and annotation APIs in external React projects.
+- Point-on-surface annotations, note import, and an application-owned persistence example.
+- Object transform handles using existing ecosystem tools.
+- React 19/Fiber 9 compatibility checks.
+- Separately tested XR input and spatial UI adapters.
+
+MIT licensed. The procedural demo model is included under the same license.

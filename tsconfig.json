@@ -3,6 +3,7 @@
     "target": "ES2020",
     "useDefineForClassFields": true,
     "module": "ESNext",
+    "jsx": "react-jsx",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "moduleResolution": "bundler",
     "strict": true,
@@ -16,6 +17,6 @@
     "emitDeclarationOnly": true,
     "rootDir": "src"
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules", "dist", "demo"]
 }

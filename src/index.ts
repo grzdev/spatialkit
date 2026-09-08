@@ -22,8 +22,7 @@ export type { SpatialPanelOptions } from './components/SpatialPanel';
 export { GazeTarget } from './components/GazeTarget';
 export type { GazeTargetOptions } from './components/GazeTarget';
 
-export { GestureController } from './components/GestureController';
-export type { GestureControllerOptions, GestureEventData, GestureType } from './components/GestureController';
+// Webcam support lives in spatialkit/gestures (optional MediaPipe dependency).
 
 // Utils
 export { loadGLTF, normalizeModel, applyModelShadows } from './utils/Loader';

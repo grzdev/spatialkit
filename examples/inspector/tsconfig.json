@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "emitDeclarationOnly": false,
+    "declaration": false,
+    "declarationDir": null,
+    "noEmit": true,
+    "baseUrl": "../..",
+    "paths": { "spatialkit/react": ["src/react/index.ts"] }
+  },
+  "include": ["./*.tsx", "./notes.ts"],
+  "exclude": []
+}

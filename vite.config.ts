@@ -1,57 +1,18 @@
-﻿/**
- * SpatialKit — Library Build Config
- *
- * Builds the library for npm distribution.
- * - Outputs ESM + CJS bundles
- * - Three.js and MediaPipe are externals (peerDependencies — users bring their own)
- * - TypeScript declarations are emitted to dist/
- *
- * To build: npm run build
- * To run demo: npm run dev
- */
-import { defineConfig } from "vite";
-import path from "path";
-import { fileURLToPath } from "url";
-import dts from "vite-plugin-dts";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { defineConfig } from 'vite';
+import { resolve } from 'node:path';
+import dts from 'vite-plugin-dts';
 
 export default defineConfig({
-  plugins: [
-    dts({
-      include: ["src/**/*.ts"],
-      outDir: "dist",
-      insertTypesEntry: true,
-    }),
-  ],
+  plugins: [dts({ include: ['src/**/*.ts', 'src/**/*.tsx'], outDir: 'dist' })],
   build: {
     lib: {
-      entry: path.resolve(__dirname, "src/index.ts"),
-      name: "SpatialKit",
-      formats: ["es", "cjs"],
-      fileName: (format) => `spatialkit.${format}.js`,
+      entry: { spatialkit: resolve('src/index.ts'), react: resolve('src/react/index.ts'), gestures: resolve('src/gestures.ts') },
+      formats: ['es', 'cjs'],
+      fileName: (format, entry) => `${entry}.${format === 'es' ? 'js' : 'cjs'}`,
     },
     rollupOptions: {
-      // Don't bundle peer dependencies — consumers supply these
-      external: [
-        "three",
-        "three/addons/loaders/GLTFLoader.js",
-        "three/addons/loaders/DRACOLoader.js",
-        "three/addons/controls/OrbitControls.js",
-        "three/addons/environments/RoomEnvironment.js",
-        "@mediapipe/tasks-vision",
-      ],
-      output: {
-        globals: {
-          three: "THREE",
-          "@mediapipe/tasks-vision": "MediaPipeTasksVision",
-        },
-        // Keep internal chunks clean
-        chunkFileNames: "chunks/[name]-[hash].js",
-      },
+      external: (id) => /^(three|react|react-dom|@react-three\/fiber|@react-three\/drei|@mediapipe\/tasks-vision)(\/|$)/.test(id),
     },
     sourcemap: true,
-    // Clean previous build
-    emptyOutDir: true,
   },
 });

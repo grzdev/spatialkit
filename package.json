@@ -1,16 +1,26 @@
-﻿{
+{
   "name": "spatialkit",
   "version": "0.1.0",
-  "description": "Lightweight WebXR spatial UI framework for smart glasses and AR experiences. Gesture control, floating HUDs, 3D model viewer — all in the browser.",
+  "description": "Composable selection and annotations for React Three Fiber, with optional Three.js and WebXR utilities.",
   "type": "module",
-  "main": "./dist/spatialkit.cjs.js",
-  "module": "./dist/spatialkit.es.js",
+  "main": "./dist/spatialkit.cjs",
+  "module": "./dist/spatialkit.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/spatialkit.es.js",
-      "require": "./dist/spatialkit.cjs.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/spatialkit.js",
+      "require": "./dist/spatialkit.cjs"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react.js",
+      "require": "./dist/react.cjs"
+    },
+    "./gestures": {
+      "types": "./dist/gestures.d.ts",
+      "import": "./dist/gestures.js",
+      "require": "./dist/gestures.cjs"
     }
   },
   "files": [
@@ -19,11 +29,15 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc --emitDeclarationOnly && vite build",
-    "dev": "vite --config demo/vite.config.ts",
-    "demo": "vite --config demo/vite.config.ts",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "build": "vite build",
+    "dev": "vite --config examples/inspector/vite.config.ts",
+    "demo": "vite --config examples/inspector/vite.config.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p examples/inspector/tsconfig.json",
+    "prepublishOnly": "npm run build",
+    "demo:legacy": "vite --config demo/vite.config.ts",
+    "build:example": "npm run build && vite build --config examples/inspector/vite.config.ts",
+    "test": "tsx --test tests/*.test.ts tests/*.test.tsx",
+    "test:package": "npm run build && node scripts/test-package.mjs"
   },
   "keywords": [
     "webxr",
@@ -51,21 +65,45 @@
   "homepage": "https://github.com/grzdev/spatialkit#readme",
   "peerDependencies": {
     "@mediapipe/tasks-vision": ">=0.10.0",
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.18.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "three": ">=0.150.0"
   },
   "peerDependenciesMeta": {
     "@mediapipe/tasks-vision": {
       "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "@react-three/fiber": {
+      "optional": true
+    },
+    "@react-three/drei": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@mediapipe/tasks-vision": "^0.10.14",
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.18.0",
+    "@react-three/test-renderer": "^8.2.4",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "@types/three": "^0.167.0",
     "@vitejs/plugin-basic-ssl": "^1.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "three": "^0.167.0",
+    "tsx": "^4.23.13",
     "typescript": "^5.5.3",
     "vite": "^5.4.0",
     "vite-plugin-dts": "^4.5.4"
-  }
+  },
+  "sideEffects": false
 }
-
