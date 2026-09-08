@@ -244,6 +244,8 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
 .code-panel h2 { font-family: 'Manrope', sans-serif; font-size: 18px; letter-spacing: -.6px; font-weight: 700; margin-bottom: 8px; color: var(--ink); }
 .code-panel p { font-size: 11px; line-height: 1.8; color: var(--muted); }
 .code-panel code { font-family: 'JetBrains Mono', monospace; background: var(--surface-3); border-radius: 3px; padding: 1px 4px; font-size: 10px; }
+/* pre > code must NOT inherit the inline-code background — always transparent */
+.code-panel pre code { background: none; padding: 0; border-radius: 0; font-size: inherit; color: inherit; }
 .copy-button {
   display: inline-flex;
   align-items: center;
@@ -260,14 +262,15 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
 .code-panel pre {
   overflow: auto;
   margin: 0;
-  background: #1a2818;
-  color: #b8d4a0;
+  background: #0b1628;
+  color: #a8c8f8;
   border-radius: 8px;
   padding: 16px 20px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  line-height: 1.9;
-  border: 1px solid rgba(255,255,255,.05);
+  font-size: 11.5px;
+  line-height: 2;
+  border: 1px solid #1e3058;
+  box-shadow: inset 0 1px 0 rgba(96,165,250,.08);
 }
 
 /* ─── Workspace (3 columns, fills remaining height) ───────────────────── */
