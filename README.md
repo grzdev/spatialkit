@@ -15,7 +15,7 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:5173. Select a part in the model or assembly list, attach or edit a note, or upload your own model. Open **Controls lab** in the top navigation to try eight interactive examples: pendulum, hydraulic lift, gripper, medical plunger, pressure valve, turbine throttle, robot joystick, and inspection light. Each experiment includes a copyable React example. Notes are saved in this browser, not synced to a server. Re-uploading the same file restores its notes after a refresh. Export downloads a JSON copy; importing that file is not implemented yet. The Integration guide generates and downloads `ModelViewer.tsx`, provides a copyable version, and lets the user download the model to the filename referenced by the generated component.
+Open http://127.0.0.1:5173. Select a part in the model or assembly list, attach or edit a note, measure point-to-point distances with 3D calipers, slice cross-sections along X/Y/Z axes, scrub procedural exploded views, or upload your own model. You can also switch between **Studio Lighting Presets** (`Blueprint`, `Studio`, `Showroom`, `Warm Clay`), launch an auto-cycling **Guided Camera Tour** across annotations, toggle a **360° Turntable** showcase orbit, enter fullscreen **Presentation Mode**, or capture a high-DPI **Studio PNG Snapshot**. Open **Controls lab** in the top navigation to try eight interactive experiments—pendulum scrub, hydraulic lift lever, surgical robotic gripper, medical dosing plunger, pressure valve crank dial, turbine throttle, robot joystick, and an overhead inspection light shining onto Blender's Suzanne mesh—each with a copyable React snippet. Notes are saved in this browser and can be both exported and imported as JSON. The floating **Integration guide** drawer generates and downloads `ModelViewer.tsx` from anywhere in the app.
 
 The original webcam experiment is available with `npm run demo:legacy`.
 
@@ -209,7 +209,7 @@ const [direction, setDirection] = useState({ x: 0, y: 0 });
 />
 ```
 
-The dial uses vertical dragging plus arrow, Page Up/Down, Home, and End keys. The joystick constrains pointer input to a unit circle, supports arrow keys, and can return to the centre on release. Both accept custom render functions when the default visual is not appropriate for the product.
+The dial supports circular pointer dragging around its center with solid mechanical stops at `min` and `max`, linear dragging, mouse wheel scrolling, and arrow, Page Up/Down, Home, and End keys. The joystick constrains pointer input to a unit circle, supports arrow keys, and can return to the centre on release. Both accept custom render functions when the default visual is not appropriate for the product.
 
 **These annotations are browser overlays, not immersive WebXR UI.** Webcam imagery does not provide real-world anchoring. Hardware hand tracking, surface placement, occlusion, and true eye tracking are outside this React release.
 
