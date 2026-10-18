@@ -57,6 +57,17 @@ test('attachment points follow nested parent rotation, translation and scaling',
   group.rotation.z = Math.PI / 2;
   assert.ok(partCenter(mesh).distanceTo(new Vector3(3, 6, 5)) < 1e-6);
 });
+test('mesh-local hotspot positions reproduce the same world point through transforms', () => {
+  const { group, mesh } = fixture();
+  group.position.set(4, 2, -3);
+  group.rotation.y = Math.PI / 3;
+  group.scale.setScalar(2.5);
+  mesh.position.set(0.5, 1, -0.25);
+  group.updateMatrixWorld(true);
+  const local = new Vector3(0.3, -0.2, 0.8);
+  const world = mesh.localToWorld(local.clone());
+  assert.ok(mesh.worldToLocal(world.clone()).distanceTo(local) < 1e-6);
+});
 test('notes round trip and reject corrupted or duplicate saved data', () => {
   const notes = [{ id: '1', target: 'pump/valve', label: 'Inspect seal' }];
   assert.deepEqual(parseNotes(JSON.stringify(notes)), notes);
@@ -64,4 +75,13 @@ test('notes round trip and reject corrupted or duplicate saved data', () => {
   assert.throws(() => parseNotes('not json'));
   assert.throws(() => parseNotes(JSON.stringify([...notes, ...notes])));
   assert.throws(() => parseNotes('[{"id":"1","target":"pump/valve","label":3}]'));
+});
+
+test('model instance preserves mesh baseline position for exploded view', () => {
+  const { group, mesh } = fixture();
+  mesh.position.set(2, 3, 4);
+  const instance = createModelInstance(group, 'test-model');
+  const record = instance.records[0];
+  assert.ok(record.object.userData._skOriginalPosition instanceof Vector3);
+  assert.deepEqual(record.object.userData._skOriginalPosition, new Vector3(2, 3, 4));
 });

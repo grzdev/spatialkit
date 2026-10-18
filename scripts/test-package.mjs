@@ -23,9 +23,10 @@ for (const name of ['react.js', 'spatialkit.js']) {
 await writeFile(join(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
 await writeFile(join(consumer, 'smoke.mjs'), `
 import assert from 'node:assert/strict';
-import { SpatialProvider, SelectableModel, Annotation, useSpatial } from 'spatialkit/react';
+import { SpatialProvider, SelectableModel, SelectableObject, Annotation, BlenderControls, TimelineScrubber, DialControl, JoystickControl, useMediaTimeline, mapTimelineValue, useSpatial } from 'spatialkit/react';
 import { SceneManager } from 'spatialkit';
-for (const exported of [SpatialProvider, SelectableModel, Annotation, useSpatial, SceneManager]) assert.equal(typeof exported, 'function');
+for (const exported of [SpatialProvider, SelectableModel, SelectableObject, Annotation, TimelineScrubber, DialControl, JoystickControl, useMediaTimeline, mapTimelineValue, useSpatial, SceneManager]) assert.equal(typeof exported, 'function');
+assert.ok(BlenderControls, 'BlenderControls export is missing');
 console.log('Packed ESM exports resolve without constructing browser resources.');
 `);
 await writeFile(join(consumer, 'smoke.tsx'), `

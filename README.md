@@ -4,6 +4,8 @@ Composable selection and annotations for React Three Fiber.
 
 SpatialKit adds part selection, highlighting, model metadata, and attached labels to an existing React 3D scene. This repository includes a working inspector with a local pump assembly, searchable parts, saved notes, and JSON export.
 
+The inspector also accepts a user's own `.glb` or self-contained `.gltf` model. It validates and parses the model locally, fits it into the viewport, discovers selectable meshes, isolates annotations by a SHA-256 content identifier, and generates a complete React component for that exact model and its current notes. The uploaded model is never sent to a server. Models with external files or Draco, Meshopt, or KTX2 compression should be exported as an uncompressed GLB with embedded textures before upload. The current limit is 50 MB.
+
 This is a local development preview; these changes have not been published to npm.
 
 ## Try the inspector
@@ -13,7 +15,7 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:5173. Select a part in the model or assembly list, attach a note, and reload to see it restored. Notes are saved in this browser, not synced to a server. Export downloads a JSON copy; importing that file is not implemented yet.
+Open http://127.0.0.1:5173. Select a part in the model or assembly list, attach or edit a note, or upload your own model. Open **Controls lab** in the top navigation to try eight interactive examples: pendulum, hydraulic lift, gripper, medical plunger, pressure valve, turbine throttle, robot joystick, and inspection light. Each experiment includes a copyable React example. Notes are saved in this browser, not synced to a server. Re-uploading the same file restores its notes after a refresh. Export downloads a JSON copy; importing that file is not implemented yet. The Integration guide generates and downloads `ModelViewer.tsx`, provides a copyable version, and lets the user download the model to the filename referenced by the generated component.
 
 The original webcam experiment is available with `npm run demo:legacy`.
 
@@ -36,11 +38,11 @@ npm install three@0.167 react@18 react-dom@18 @react-three/fiber@8 @react-three/
 ```tsx
 import { Suspense, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
 import {
   SpatialProvider,
   SelectableModel,
   Annotation,
+  BlenderControls,
   type SpatialPart,
 } from 'spatialkit/react';
 
@@ -62,7 +64,7 @@ export function Inspector() {
               />
             </SpatialProvider>
           </Suspense>
-          <OrbitControls target={[0, 1, 0]} />
+          <BlenderControls target={[0, 1, 0]} />
         </Canvas>
       </div>
       <p>{selectedPart?.name ?? 'Select a part'}</p>
@@ -99,11 +101,19 @@ Use that context in your application state, backend, or AI request. SpatialKit d
 | `position`, `rotation` | Optional `[x, y, z]`; rotations are radians. |
 | `scale` | Optional number or `[x, y, z]`. Asset units are preserved. |
 | `highlightColor` | Hover/selection color; defaults to `#58ddba`. |
+| `fit` | Optional positive size for the longest dimension. Centres X/Z and places the model's bottom at Y=0. |
+| `explode` | Optional zero-to-one factor to procedurally explode all meshes outward from the model centroid. |
+| `clippingPlanes` | Optional array of `THREE.Plane` instances for cross-section rendering. |
+| `animationProgress` | Optional zero-to-one position in a glTF animation. The model updates in either direction as this value changes. |
+| `animation` | Optional clip name or index; defaults to the first clip. |
+| `onSurfaceClick` | Receives the selected part and a persistent mesh-local point for exact surface hotspots. |
 | `configureLoader` | Optional stable `(loader: GLTFLoader) => void` to configure decoders/plugins. |
 
 Selection is at mesh level. Each mesh's part id uses `modelId` plus, in priority order, `extras.spatialId`, a unique mesh name, or a deterministic node path. Duplicate explicit ids throw. Paths can change when an asset hierarchy changes, so author explicit ids for long-lived annotations. Named groups are not selectable parts in this preview.
 
-Model instances clone transforms and materials. Highlighting one instance does not change another. Loader-cached geometry and textures are shared and never disposed by SpatialKit; cloned materials are disposed on unmount. Animation playback is not implemented.
+Model instances clone transforms and materials. Highlighting one instance does not change another. Loader-cached geometry and textures are shared and never disposed by SpatialKit; cloned materials are disposed on unmount. Pass `animations` to `SelectableObject` when the already parsed object has animation clips.
+
+`SelectableObject` provides the same interaction behavior for an already parsed `THREE.Object3D`. It is useful for local uploads and custom asset pipelines. The caller owns and disposes the source object's geometry and textures. The inspector uses it with `fit={3.5}` after validating an uploaded model.
 
 ### `Annotation`
 
@@ -114,10 +124,92 @@ Model instances clone transforms and materials. Highlighting one instance does n
 | `label` | Text content. |
 | `children` | Custom React content, taking precedence over `label`. |
 | `offset` | World-space `[x, y, z]` offset from the mesh bounding-box centre; defaults to `[0, 0.3, 0]`. |
+| `point` | Optional mesh-local `[x, y, z]` point captured by `onSurfaceClick`; use it to place several hotspots on one combined mesh. |
 | `selectedOnly` | Show only while the target is selected; defaults to false. |
 | `className`, `style` | Customize the label. |
+| `pin` | Render a visual 3D pin at the anchor position; defaults to `true` for surface hotspots. |
+| `pinColor` | Pin and anchor dot color hex; defaults to `#58ddba`. |
+| `line` | Draw a leader line connecting the 3D surface anchor to the floating label. |
+| `lineColor` | Leader line color hex; defaults to `pinColor`. |
 
-Annotations track transforms and project into the browser DOM using Drei's `Html`. They are display-only by default, remain visible through geometry, and do not avoid overlaps automatically. Missing or ambiguous targets render nothing; a full part id or `modelId` disambiguates. No hardcoded `pressure-valve` behavior is built into the library.
+### `Measurement` (Calipers)
+
+| Prop | Behavior |
+| --- | --- |
+| `start` | Required world-space `[x, y, z]` starting point. |
+| `end` | Required world-space `[x, y, z]` ending point. |
+| `unit` | Display unit: `'mm'`, `'cm'` (default), `'m'`, or `'in'`. |
+| `scaleFactor` | Optional custom multiplier from Three.js units to measurement units. |
+| `color` | Caliper line, endpoints, and badge border color; defaults to `#58ddba`. |
+| `formatDistance` | Optional custom formatter `(distance: number, unit: MeasurementUnit) => string`. |
+
+Render 3D point-to-point dimension caliper lines with a floating midpoint HTML badge:
+
+```tsx
+<Measurement
+  start={[-0.5, 1.2, 0]}
+  end={[0.5, 1.2, 0]}
+  unit="cm"
+  color="#f6ad55"
+/>
+```
+
+### Interaction timelines
+
+`TimelineScrubber` is a controlled, accessible range input for mouse, touch, and keyboard users. Connect it directly to a model's animation, or use `useMediaTimeline` to map a domain value such as centimetres onto a video segment:
+
+```tsx
+const [distance, setDistance] = useState(0);
+const videoRef = useRef<HTMLVideoElement>(null);
+
+useMediaTimeline(videoRef, distance, {
+  input: [0, 2.5],
+  time: [49, 50.4],
+});
+
+return <>
+  <video ref={videoRef} src="/procedure.mp4" />
+  <TimelineScrubber
+    value={distance}
+    onChange={setDistance}
+    min={0}
+    max={2.5}
+    step={0.1}
+    orientation="vertical"
+    label="Cup distance"
+    formatValue={(value) => `${value.toFixed(1)} cm`}
+  />
+</>;
+```
+
+For 3D, pass a zero-to-one scrubber value to `<SelectableModel animationProgress={progress} />`. `BlenderControls` supplies middle-mouse orbit, Shift + middle-mouse pan, wheel zoom, right-drag pan, and touch controls.
+
+### Gesture controls
+
+`DialControl` and `JoystickControl` are controlled, accessible interaction primitives. They contain the pointer bounds and keyboard behavior while your application decides what the value drives.
+
+```tsx
+const [pressure, setPressure] = useState(35);
+const [direction, setDirection] = useState({ x: 0, y: 0 });
+
+<DialControl
+  min={0}
+  max={100}
+  step={1}
+  value={pressure}
+  onChange={setPressure}
+  label="Pressure valve"
+/>
+
+<JoystickControl
+  value={direction}
+  onChange={setDirection}
+  springToCenter
+  label="Robot direction"
+/>
+```
+
+The dial uses vertical dragging plus arrow, Page Up/Down, Home, and End keys. The joystick constrains pointer input to a unit circle, supports arrow keys, and can return to the centre on release. Both accept custom render functions when the default visual is not appropriate for the product.
 
 **These annotations are browser overlays, not immersive WebXR UI.** Webcam imagery does not provide real-world anchoring. Hardware hand tracking, surface placement, occlusion, and true eye tracking are outside this React release.
 
@@ -160,7 +252,7 @@ npm run test:package
 ## Next milestones
 
 - Validate selection and annotation APIs in external React projects.
-- Point-on-surface annotations, note import, and an application-owned persistence example.
+- Note import and an application-owned persistence example.
 - Object transform handles using existing ecosystem tools.
 - React 19/Fiber 9 compatibility checks.
 - Separately tested XR input and spatial UI adapters.

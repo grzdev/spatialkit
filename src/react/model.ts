@@ -12,6 +12,19 @@ export interface SpatialPart {
 
 export interface PartRecord { part: SpatialPart; object: Mesh }
 
+/** Centre an asset on X/Z and rest its lowest point on Y=0, preserving proportions. */
+export function modelFit(object: Object3D, size: number) {
+  if (!Number.isFinite(size) || size <= 0) throw new Error('[SpatialKit] fit must be a positive finite number.');
+  object.updateWorldMatrix(true, true);
+  const box = new Box3().setFromObject(object);
+  const dimensions = box.getSize(new Vector3());
+  const largest = Math.max(dimensions.x, dimensions.y, dimensions.z);
+  if (box.isEmpty() || !Number.isFinite(largest) || largest <= 0) throw new Error('This model has no visible mesh bounds.');
+  const center = box.getCenter(new Vector3());
+  const scale = size / largest;
+  return { scale, position: [-center.x * scale, -box.min.y * scale, -center.z * scale] as [number, number, number] };
+}
+
 /** Clone transforms and materials; retain shared, loader-owned geometries/textures. */
 export function createModelInstance(source: Object3D, modelId: string) {
   const root = clone(source);
@@ -37,6 +50,10 @@ export function createModelInstance(source: Object3D, modelId: string) {
         return cloned;
       };
       node.material = Array.isArray(node.material) ? node.material.map(copy) : copy(node.material);
+      // Preserve baseline position for procedural exploded views
+      if (!node.userData._skOriginalPosition) {
+        node.userData._skOriginalPosition = node.position.clone();
+      }
       records.push({ object: node, part: { id, modelId, name: node.name || key, metadata: { ...node.userData } } });
     }
     node.children.forEach((child, index) => visit(child, `${path}.${index}`));

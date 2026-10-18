@@ -1,6 +1,6 @@
 // Original, procedural demo asset. Regenerate with: node scripts/create-demo-model.mjs
 import { mkdir, writeFile } from 'node:fs/promises';
-import { BoxGeometry, CylinderGeometry, TorusGeometry, Group, Mesh, MeshStandardMaterial } from 'three';
+import { AnimationClip, BoxGeometry, CylinderGeometry, TorusGeometry, Group, Mesh, MeshStandardMaterial, VectorKeyframeTrack } from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 
 globalThis.FileReader = class {
@@ -42,7 +42,18 @@ for (let i = 0; i < 6; i++) {
   const angle = i * Math.PI / 3;
   part(`cover-bolt-${i + 1}`, new CylinderGeometry(0.055, 0.055, 0.09, 6), dark, [0.88 + Math.cos(angle) * 0.5, 1 + Math.sin(angle) * 0.5, 0.49], 'Fastener securing the front cover.', [Math.PI / 2, 0, 0]);
 }
+const times = [0, 1, 2, 3];
+const move = (name, positions) => new VectorKeyframeTrack(`${name}.position`, times, positions.flat());
+const inspection = new AnimationClip('Exploded inspection', 3, [
+  move('front-cover', [[0.88, 1, 0.39], [0.88, 1, 0.82], [0.88, 1, 1.18], [0.88, 1, 1.5]]),
+  move('inlet-port', [[0.88, 1, 0.71], [0.88, 1, 1.12], [0.88, 1, 1.55], [0.88, 1, 1.9]]),
+  move('inlet-flange', [[0.88, 1, 1], [0.88, 1, 1.42], [0.88, 1, 1.88], [0.88, 1, 2.3]]),
+  move('pressure-valve', [[0.88, 2.11, 0], [0.88, 2.32, 0], [0.88, 2.58, 0], [0.88, 2.82, 0]]),
+  move('valve-stem', [[0.88, 2.35, 0], [0.88, 2.56, 0], [0.88, 2.82, 0], [0.88, 3.06, 0]]),
+  move('valve-handwheel', [[0.88, 2.51, 0], [0.88, 2.72, 0], [0.88, 2.98, 0], [0.88, 3.22, 0]]),
+  move('handwheel-spoke', [[0.88, 2.51, 0], [0.88, 2.72, 0], [0.88, 2.98, 0], [0.88, 3.22, 0]]),
+]);
 await mkdir('examples/inspector/public', { recursive: true });
-const result = await new GLTFExporter().parseAsync(scene, { binary: true });
+const result = await new GLTFExporter().parseAsync(scene, { binary: true, animations: [inspection] });
 await writeFile('examples/inspector/public/pump.glb', Buffer.from(result));
-console.log(`Created original pump.glb (${Math.round(result.byteLength / 1024)} KB, ${scene.children.length} selectable parts).`);
+console.log(`Created original pump.glb (${Math.round(result.byteLength / 1024)} KB, ${scene.children.length} selectable parts, ${inspection.duration}s animation).`);
