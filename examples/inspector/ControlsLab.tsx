@@ -454,9 +454,61 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
           </div>
         </ControlCard>
 
-        <ControlCard index={2} number="03" title="Robotic gripper" description="Drive two or more transforms from one shared interaction value." tags={['LINKED', 'ROBOTICS']} code={`const gap = 12 + grip * 58;\n<TimelineScrubber value={grip} onChange={setGrip} />`}>
-          <div className="gripper-demo">
-            <div className="gripper-rail"><i style={{ transform: `translateX(${-10 - grip * 35}px)` }} /><i style={{ transform: `translateX(${10 + grip * 35}px)` }} /><b /></div>
+        <ControlCard index={2} number="03" title="Robotic gripper" description="Close the articulated surgical jaws onto the specimen vial—drag the jaws directly or scrub the actuator." tags={['LINKED', 'SURGICAL']} code={`const gap = 12 + grip * 58;\n<TimelineScrubber value={grip} onChange={setGrip} />`}>
+          <div className={`gripper-demo ${grip <= 0.22 ? 'is-clamped' : ''}`}>
+            <div
+              className="gripper-stage-rig"
+              title="Drag horizontally to open or clamp the robotic jaws"
+              onPointerDown={(event) => {
+                event.currentTarget.setPointerCapture(event.pointerId);
+                const rect = event.currentTarget.getBoundingClientRect();
+                const distFromCenter = Math.abs(event.clientX - (rect.left + rect.width / 2));
+                setGrip(clamp((distFromCenter - 18) / (rect.width * 0.36), 0, 1));
+              }}
+              onPointerMove={(event) => {
+                if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                const rect = event.currentTarget.getBoundingClientRect();
+                const distFromCenter = Math.abs(event.clientX - (rect.left + rect.width / 2));
+                setGrip(clamp((distFromCenter - 18) / (rect.width * 0.36), 0, 1));
+              }}
+            >
+              <div className="gripper-telemetry">
+                <span className="gripper-dot" />
+                {grip <= 0.22 ? `CLAMPED · ${(12.4 + (0.22 - grip) * 28).toFixed(1)} N` : 'READY · 0.0 N'}
+              </div>
+              <div className="gripper-rail">
+                <div className="gripper-leadscrew" />
+                {/* Left articulated surgical jaw */}
+                <div
+                  className="gripper-jaw left"
+                  style={{ transform: `translateX(${-6 - grip * 42}px) rotate(${(0.2 - grip) * 8}deg)` }}
+                >
+                  <span className="jaw-knuckle" />
+                  <span className="jaw-pad" />
+                </div>
+                {/* Right articulated surgical jaw */}
+                <div
+                  className="gripper-jaw right"
+                  style={{ transform: `translateX(${6 + grip * 42}px) rotate(${-(0.2 - grip) * 8}deg)` }}
+                >
+                  <span className="jaw-knuckle" />
+                  <span className="jaw-pad" />
+                </div>
+                {/* Center rotating servo pinion */}
+                <b style={{ transform: `rotate(${grip * 220}deg)` }}><span /></b>
+              </div>
+              {/* Specimen capsule suspended between the jaws */}
+              <div
+                className="gripper-specimen"
+                style={{
+                  transform: `scaleX(${grip <= 0.22 ? 0.92 + (grip / 0.22) * 0.08 : 1})`,
+                }}
+              >
+                <div className="specimen-cap" />
+                <div className="specimen-core" />
+                <span className="specimen-label">BIO-03</span>
+              </div>
+            </div>
             <div className="lab-control-row"><TimelineScrubber value={grip} onChange={setGrip} label="Gripper opening" /><output>{Math.round(12 + grip * 58)} mm</output></div>
           </div>
         </ControlCard>

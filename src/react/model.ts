@@ -55,6 +55,7 @@ export function createModelInstance(source: Object3D, modelId: string) {
         node.userData._skOriginalPosition = node.position.clone();
       }
       records.push({ object: node, part: { id, modelId, name: node.name || key, metadata: { ...node.userData } } });
+      node.userData._skPartId = id;
     }
     node.children.forEach((child, index) => visit(child, `${path}.${index}`));
   };

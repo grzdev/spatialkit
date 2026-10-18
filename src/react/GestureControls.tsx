@@ -47,8 +47,9 @@ export function DialControl({
 }: DialControlProps) {
   const drag = useRef<{
     pointerId: number;
-    x: number;
-    y: number;
+    startX: number;
+    startY: number;
+    lastAngle: number;
     centerX: number;
     centerY: number;
     radius: number;
@@ -61,21 +62,11 @@ export function DialControl({
   const angle = minAngle + progress * (maxAngle - minAngle);
   const set = (next: number) => onChange(snap(next, min, max, step));
 
-  const valueFromPointerAngle = (clientX: number, clientY: number, centerX: number, centerY: number, currentValue: number) => {
+  const getPointerAngle = (clientX: number, clientY: number, centerX: number, centerY: number) => {
     const dx = clientX - centerX;
     const dy = clientY - centerY;
     // 0 deg is straight up (12 o'clock), negative is counter-clockwise (left), positive is clockwise (right)
-    const pointerAngle = Math.atan2(dx, -dy) * (180 / Math.PI);
-    const span = maxAngle - minAngle;
-    if (span <= 0) return min;
-    // Prevent wrap-around jumps in the bottom dead-zone (near +-180 deg)
-    const deadZoneThreshold = Math.max(Math.abs(minAngle), Math.abs(maxAngle)) + 20;
-    if (Math.abs(pointerAngle) > deadZoneThreshold) {
-      const currentProgress = range > 0 ? (currentValue - min) / range : 0;
-      return currentProgress < 0.5 ? min : max;
-    }
-    const nextProgress = clamp((pointerAngle - minAngle) / span, 0, 1);
-    return min + nextProgress * range;
+    return Math.atan2(dx, -dy) * (180 / Math.PI);
   };
 
   const keyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -108,13 +99,19 @@ export function DialControl({
         const centerY = bounds.top + bounds.height / 2;
         const radius = Math.min(bounds.width, bounds.height) / 2;
         const dist = Math.hypot(event.clientX - centerX, event.clientY - centerY);
-        const mode = radius > 0 && dist > radius * 0.28 ? 'angle' : 'linear';
-        let initialValue = value;
-        if (mode === 'angle') {
-          initialValue = valueFromPointerAngle(event.clientX, event.clientY, centerX, centerY, value);
-          set(initialValue);
-        }
-        drag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, centerX, centerY, radius, value: initialValue, mode };
+        const mode = radius > 0 && dist > radius * 0.22 ? 'angle' : 'linear';
+        const lastAngle = getPointerAngle(event.clientX, event.clientY, centerX, centerY);
+        drag.current = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          lastAngle,
+          centerX,
+          centerY,
+          radius,
+          value,
+          mode,
+        };
         setActive(true);
         event.currentTarget.dataset.active = 'true';
       }}
@@ -122,13 +119,23 @@ export function DialControl({
         if (!drag.current || drag.current.pointerId !== event.pointerId) return;
         const current = drag.current;
         const dist = Math.hypot(event.clientX - current.centerX, event.clientY - current.centerY);
-        if (current.radius > 0 && (current.mode === 'angle' || dist > current.radius * 0.38)) {
-          current.mode = 'angle';
-          const next = valueFromPointerAngle(event.clientX, event.clientY, current.centerX, current.centerY, current.value);
-          current.value = next;
-          set(next);
+        if (current.radius > 0 && (current.mode === 'angle' || dist > current.radius * 0.32)) {
+          if (current.mode !== 'angle') {
+            current.mode = 'angle';
+            current.lastAngle = getPointerAngle(event.clientX, event.clientY, current.centerX, current.centerY);
+          }
+          const nextAngle = getPointerAngle(event.clientX, event.clientY, current.centerX, current.centerY);
+          let deltaAngle = nextAngle - current.lastAngle;
+          if (deltaAngle > 180) deltaAngle -= 360;
+          if (deltaAngle < -180) deltaAngle += 360;
+          current.lastAngle = nextAngle;
+          const span = Math.max(1, maxAngle - minAngle);
+          // Solid mechanical stops at min and max: never wraps around across 6 o'clock
+          const nextValue = clamp(current.value + (deltaAngle / span) * range, min, max);
+          current.value = nextValue;
+          set(nextValue);
         } else {
-          const delta = (current.y - event.clientY) + (event.clientX - current.x);
+          const delta = (current.startY - event.clientY) + (event.clientX - current.startX);
           set(current.value + (delta / dragPixels) * range);
         }
       }}

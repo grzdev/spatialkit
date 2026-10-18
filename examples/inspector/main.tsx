@@ -10,9 +10,9 @@ import {
   type ComponentRef,
 } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { ContactShadows, Html } from '@react-three/drei';
-import { Plane, Vector3 } from 'three';
+import { Box3, Mesh, Plane, Vector3 } from 'three';
 import {
   Annotation,
   BlenderControls,
@@ -32,6 +32,122 @@ import { ControlsLab } from './ControlsLab';
 import './style.css';
 
 const title = (part: SpatialPart) => String(part.metadata.label ?? part.name);
+
+export type StudioEnvironmentPreset = 'blueprint' | 'studio' | 'showroom' | 'warm';
+
+interface EnvironmentConfig {
+  label: string;
+  bgLight: string;
+  bgDark: string;
+  ambient: number;
+  hemiSky: string;
+  hemiGround: string;
+  hemiIntensity: number;
+  keyColor: string;
+  keyIntensity: number;
+  keyPos: [number, number, number];
+  fillColor: string;
+  fillIntensity: number;
+  fillPos: [number, number, number];
+  rimColor?: string;
+  rimIntensity?: number;
+  rimPos?: [number, number, number];
+  showGrid: boolean;
+  gridPrimary: string;
+  gridSecondary: string;
+  shadowOpacity: number;
+}
+
+const ENVIRONMENT_PRESETS: Record<StudioEnvironmentPreset, EnvironmentConfig> = {
+  blueprint: {
+    label: 'Blueprint',
+    bgLight: '#e8eef8',
+    bgDark: '#111a2c',
+    ambient: 1.2,
+    hemiSky: '#ffffff',
+    hemiGround: '#687a69',
+    hemiIntensity: 2.0,
+    keyColor: '#ffffff',
+    keyIntensity: 3.2,
+    keyPos: [4, 7, 5],
+    fillColor: '#c5dfed',
+    fillIntensity: 1.8,
+    fillPos: [-4, 3, -2],
+    showGrid: true,
+    gridPrimary: '#b8c7e0',
+    gridSecondary: '#d3dfef',
+    shadowOpacity: 0.3,
+  },
+  studio: {
+    label: 'Studio',
+    bgLight: '#f8fafc',
+    bgDark: '#162032',
+    ambient: 1.65,
+    hemiSky: '#ffffff',
+    hemiGround: '#cbd5e1',
+    hemiIntensity: 2.3,
+    keyColor: '#fffbeb',
+    keyIntensity: 3.6,
+    keyPos: [5, 8, 6],
+    fillColor: '#e0f2fe',
+    fillIntensity: 2.2,
+    fillPos: [-5, 4, -3],
+    rimColor: '#f8fafc',
+    rimIntensity: 1.6,
+    rimPos: [0, 5, -6],
+    showGrid: false,
+    gridPrimary: '#cbd5e1',
+    gridSecondary: '#e2e8f0',
+    shadowOpacity: 0.45,
+  },
+  showroom: {
+    label: 'Showroom',
+    bgLight: '#090d16',
+    bgDark: '#070b14',
+    ambient: 0.75,
+    hemiSky: '#38bdf8',
+    hemiGround: '#020617',
+    hemiIntensity: 1.4,
+    keyColor: '#f8fafc',
+    keyIntensity: 4.0,
+    keyPos: [4, 7, 4],
+    fillColor: '#2dd4bf',
+    fillIntensity: 2.8,
+    fillPos: [-5, 3, -3],
+    rimColor: '#fbbf24',
+    rimIntensity: 2.6,
+    rimPos: [2, 4, -6],
+    showGrid: true,
+    gridPrimary: '#1e293b',
+    gridSecondary: '#0f172a',
+    shadowOpacity: 0.65,
+  },
+  warm: {
+    label: 'Warm Clay',
+    bgLight: '#f6f1e9',
+    bgDark: '#1c1917',
+    ambient: 1.35,
+    hemiSky: '#fef3c7',
+    hemiGround: '#78716c',
+    hemiIntensity: 1.9,
+    keyColor: '#fde68a',
+    keyIntensity: 3.5,
+    keyPos: [5, 7, 4],
+    fillColor: '#fed7aa',
+    fillIntensity: 1.7,
+    fillPos: [-4, 3, -3],
+    showGrid: true,
+    gridPrimary: '#d6d3d1',
+    gridSecondary: '#e7e5e4',
+    shadowOpacity: 0.38,
+  },
+};
+
+interface CameraFocusRequest {
+  partId: string;
+  point?: [number, number, number];
+  nonce: number;
+}
 
 // ─── Scene error boundary ───────────────────────────────────────────────────
 class SceneError extends Component<{ children: ReactNode; onReset: () => void }, { error: boolean }> {
@@ -64,6 +180,118 @@ function SceneBridge({
     selectRef.current = select;
     return () => { selectRef.current = () => {}; };
   }, [select, selectRef]);
+  return null;
+}
+
+// ─── Camera Director: handles 360° Turntable & Smooth Part/Hotspot Fly-To ───
+function ViewportDirector({
+  turntable,
+  focusRequest,
+  controlsRef,
+}: {
+  turntable: boolean;
+  focusRequest: CameraFocusRequest | null;
+  controlsRef: React.RefObject<ComponentRef<typeof BlenderControls> | null>;
+}) {
+  const { scene, camera } = useThree();
+  const flightRef = useRef<{
+    goalTarget: Vector3;
+    goalCamera: Vector3;
+    elapsed: number;
+  } | null>(null);
+  const lastNonceRef = useRef<number>(0);
+
+  // Cancel automated camera flight if the user grabs or scrolls the viewport
+  useEffect(() => {
+    const cancelFlight = () => { flightRef.current = null; };
+    window.addEventListener('pointerdown', cancelFlight, { passive: true });
+    window.addEventListener('wheel', cancelFlight, { passive: true });
+    return () => {
+      window.removeEventListener('pointerdown', cancelFlight);
+      window.removeEventListener('wheel', cancelFlight);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!focusRequest || focusRequest.nonce === lastNonceRef.current) return;
+    lastNonceRef.current = focusRequest.nonce;
+
+    let targetMesh: Mesh | null = null;
+    scene.traverse((node) => {
+      if (node instanceof Mesh && node.userData._skPartId === focusRequest.partId) {
+        targetMesh = node;
+      }
+    });
+    if (!targetMesh) return;
+
+    const mesh = targetMesh as Mesh;
+    mesh.updateWorldMatrix(true, true);
+    const box = new Box3().setFromObject(mesh);
+    const goalTarget = new Vector3();
+
+    if (focusRequest.point) {
+      goalTarget.set(...focusRequest.point);
+      mesh.localToWorld(goalTarget);
+    } else {
+      box.getCenter(goalTarget);
+    }
+
+    const size = box.getSize(new Vector3());
+    const radius = Math.max(size.x, size.y, size.z, 0.8);
+    const ctrl = controlsRef.current;
+    const currentTarget = ctrl?.target ?? new Vector3(0, 1, 0);
+    const offsetDir = camera.position.clone().sub(currentTarget);
+    if (offsetDir.lengthSq() < 0.001) offsetDir.set(1, 0.65, 1);
+    offsetDir.normalize();
+
+    const idealDist = Math.min(Math.max(radius * 2.6, 3.4), 7.8);
+    const goalCamera = goalTarget.clone().addScaledVector(offsetDir, idealDist);
+    goalCamera.y = Math.max(goalTarget.y + 0.55, goalCamera.y);
+
+    flightRef.current = {
+      goalTarget,
+      goalCamera,
+      elapsed: 0,
+    };
+  }, [focusRequest, scene, camera, controlsRef]);
+
+  useFrame((_, delta) => {
+    const ctrl = controlsRef.current;
+    if (!ctrl) return;
+    const dt = Math.min(delta, 0.05);
+
+    if (flightRef.current) {
+      const flight = flightRef.current;
+      flight.elapsed += dt;
+      const damp = 1 - Math.exp(-6.5 * dt);
+      ctrl.target.lerp(flight.goalTarget, damp);
+      camera.position.lerp(flight.goalCamera, damp);
+      ctrl.update();
+
+      if (
+        flight.elapsed > 1.1 ||
+        (ctrl.target.distanceToSquared(flight.goalTarget) < 0.002 &&
+          camera.position.distanceToSquared(flight.goalCamera) < 0.005)
+      ) {
+        flightRef.current = null;
+      }
+      return;
+    }
+
+    if (turntable) {
+      const offset = camera.position.clone().sub(ctrl.target);
+      const angle = dt * 0.55;
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const nextX = offset.x * cos - offset.z * sin;
+      const nextZ = offset.x * sin + offset.z * cos;
+      offset.x = nextX;
+      offset.z = nextZ;
+      camera.position.copy(ctrl.target).add(offset);
+      ctrl.update();
+    }
+  });
+
   return null;
 }
 
@@ -130,6 +358,7 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
 
   const selectRef = useRef<(target: string | null) => void>(() => {});
   const controls  = useRef<ComponentRef<typeof BlenderControls>>(null);
+  const viewportRef = useRef<HTMLElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const noteFileInput = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -145,8 +374,46 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
   const [sectionOffset, setSectionOffset] = useState(0);
   const [animationProgress, setAnimationProgress] = useState(0);
   const [importStatus, setImportStatus] = useState<string | null>(null);
+
+  // Martech3D-inspired studio showcase features:
+  // 1) Environment presets, 2) 360° Turntable + Studio Snapshot + Presentation Mode, 3) Guided Camera Tour
+  const [envPreset, setEnvPreset] = useState<StudioEnvironmentPreset>('blueprint');
+  const [turntable, setTurntable] = useState(false);
+  const [presentMode, setPresentMode] = useState(false);
+  const [snapshotToast, setSnapshotToast] = useState<string | null>(null);
+  const [shutterFlash, setShutterFlash] = useState(false);
+  const [focusRequest, setFocusRequest] = useState<CameraFocusRequest | null>(null);
+  const [tourActive, setTourActive] = useState(false);
+  const [tourPaused, setTourPaused] = useState(false);
+  const [tourIndex, setTourIndex] = useState(0);
+
   const snippet = generateComponent(model, notes);
   const storageKey = notesKey(model.id);
+  const env = ENVIRONMENT_PRESETS[envPreset];
+  const canvasBg = envPreset === 'showroom' ? env.bgDark : (theme === 'dark' ? env.bgDark : env.bgLight);
+
+  // Build tour stops from saved notes, or fall back to assembly parts
+  const tourStops = useMemo(() => {
+    if (notes.length > 0) {
+      return notes.map((note) => {
+        const part = parts.find((p) => p.id === note.target || p.name === note.target);
+        return {
+          id: note.id,
+          partId: part?.id ?? note.target,
+          partTitle: part ? title(part) : note.target.replace(/^[^/]+\//, ''),
+          caption: note.label,
+          point: note.point,
+        };
+      });
+    }
+    return parts.map((part) => ({
+      id: part.id,
+      partId: part.id,
+      partTitle: title(part),
+      caption: String(part.metadata.description ?? `Inspecting ${title(part)} in ${model.name}.`),
+      point: undefined,
+    }));
+  }, [notes, parts, model.name]);
 
   // Compute active clipping plane for cross-section mode
   const clippingPlanes = useMemo(() => {
@@ -156,14 +423,18 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
       : sectionAxis === 'y'
         ? new Vector3(0, -1, 0)
         : new Vector3(0, 0, -1);
-    // sectionOffset ranges from -1.8 to 1.8 units
     const plane = new Plane(normal, sectionOffset * 2);
     return [plane];
   }, [crossSectionEnabled, sectionAxis, sectionOffset]);
 
   function showLab(open: boolean) {
     setLabOpen(open);
+    if (open) setTourActive(false);
     history.replaceState(null, '', open ? '#controls' : `${location.pathname}${location.search}`);
+  }
+
+  function triggerCameraFocus(partId: string, point?: [number, number, number]) {
+    setFocusRequest({ partId, point, nonce: Date.now() + Math.random() });
   }
 
   // Apply theme on mount + change
@@ -201,6 +472,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
         setPendingHotspot(null);
         setMeasuring(false);
         setCaliperPointA(null);
+        setTourActive(false);
+        setPresentMode(false);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -220,6 +493,49 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
     const t = setTimeout(() => setImportStatus(null), 3500);
     return () => clearTimeout(t);
   }, [importStatus]);
+
+  // Auto-dismiss snapshot toast
+  useEffect(() => {
+    if (!snapshotToast) return;
+    const t = setTimeout(() => setSnapshotToast(null), 3200);
+    return () => clearTimeout(t);
+  }, [snapshotToast]);
+
+  // Drive Guided Feature Tour steps & camera bookmarks
+  useEffect(() => {
+    if (!tourActive || !tourStops.length) return;
+    const safeIndex = tourIndex % tourStops.length;
+    const stop = tourStops[safeIndex];
+    if (stop) {
+      setShowNotes(true);
+      selectRef.current(stop.partId);
+      triggerCameraFocus(stop.partId, stop.point);
+    }
+  }, [tourActive, tourIndex, tourStops]);
+
+  useEffect(() => {
+    if (!tourActive || tourPaused || tourStops.length <= 1) return;
+    const timer = setInterval(() => {
+      setTourIndex((prev) => (prev + 1) % tourStops.length);
+    }, 4200);
+    return () => clearInterval(timer);
+  }, [tourActive, tourPaused, tourStops.length]);
+
+  function captureStudioSnapshot() {
+    const canvas = viewportRef.current?.querySelector('canvas');
+    if (!canvas) return;
+    try {
+      setShutterFlash(true);
+      setTimeout(() => setShutterFlash(false), 260);
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        download(blob, `${publicFilename(model.name)}-${envPreset}-studio.png`);
+        setSnapshotToast(`Studio snapshot saved (${env.label} preset)`);
+      }, 'image/png');
+    } catch {
+      setSnapshotToast('Snapshot capture unavailable in this browser.');
+    }
+  }
 
   function exportNotes() {
     const url = URL.createObjectURL(
@@ -262,15 +578,17 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
     download(new Blob([snippet], { type: 'text/plain' }), 'ModelViewer.tsx');
   }
 
-  function selectPart(target: string | null) {
+  function selectPart(target: string | null, focusCamera = false) {
     setPlacingHotspot(false);
     setPendingHotspot(null);
-    if (!measuring) selectRef.current(target);
+    if (!measuring) {
+      selectRef.current(target);
+      if (target && focusCamera) triggerCameraFocus(target);
+    }
   }
 
   function handleSurfaceClick(hit: SurfaceHit) {
     if (measuring) {
-      // Find world coordinates for the hit point
       const worldPos = hit.point.slice() as [number, number, number];
       if (!caliperPointA) {
         setCaliperPointA(worldPos);
@@ -306,11 +624,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
     title(p).toLowerCase().includes(filter.toLowerCase())
   );
   const selectedNotes = notes.filter((n) => n.target === selected?.id);
-
-  // Split parts into "groups" for the Figma-style tree.
-  // For now we place everything under one "Meshes" section — the
-  // tree-group component handles collapse/expand.
   const meshParts    = visibleParts;
+  const activeTourStop = tourActive && tourStops.length > 0 ? tourStops[tourIndex % tourStops.length] : null;
 
   return (
     <div className="app">
@@ -335,8 +650,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
             aria-controls="code-panel-region"
           >
             <span className="code-mono">〈/〉</span>
-            {codeOpen ? 'Back to inspector' : 'Integration guide'}
-            <span>↗</span>
+            {codeOpen ? 'Close guide' : 'Integration guide'}
+            <span>{codeOpen ? '×' : '↗'}</span>
           </button>
 
           <a
@@ -362,18 +677,30 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
         </nav>
       </header>
 
-      {labOpen ? <ControlsLab onBack={() => showLab(false)} /> : <>
-
-      {/* ── Code integration panel (collapsible) ───────────────────── */}
+      {/* ── Smooth Floating Integration Guide Drawer (works in both Inspector & Controls Lab without squishing layout) ── */}
+      <div
+        className={`code-panel-backdrop ${codeOpen ? 'open' : ''}`}
+        aria-hidden="true"
+        onClick={() => setCodeOpen(false)}
+      />
       <div
         id="code-panel-region"
         className={`code-panel-wrapper ${codeOpen ? 'open' : ''}`}
         aria-hidden={!codeOpen}
-        hidden={!codeOpen}
       >
         <div className="code-panel">
           <div>
-            <div className="eyebrow">YOUR MODEL → YOUR REACT SITE</div>
+            <div className="code-panel-header-row">
+              <div className="eyebrow">YOUR MODEL → YOUR REACT SITE</div>
+              <button
+                type="button"
+                className="code-panel-close"
+                onClick={() => setCodeOpen(false)}
+                aria-label="Close integration guide"
+              >
+                Esc · ×
+              </button>
+            </div>
             <h2>Take this scene with you.</h2>
             <p className="integration-summary">{model.filename} · {notes.length} annotation{notes.length === 1 ? '' : 's'} · Code updates as you edit.</p>
             <ol className="integration-steps">
@@ -383,24 +710,25 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
               <li><strong>Preview and deploy.</strong><p>Run your app’s development server. Include the model in your deployed public files; visitors can then view it and its annotations in a WebGL-enabled browser. No webcam is needed.</p></li>
             </ol>
             <div className="integration-actions">
-            <button
-              className="copy-button"
-              onClick={async () => {
-                try { await navigator.clipboard.writeText(snippet); setCopied(true); }
-                catch { setStorageState('Clipboard unavailable. Select and copy the code manually.'); }
-              }}
-            >
-              {copied ? '✓ Copied' : 'Copy React code'} <span>↗</span>
-            </button>
-            <button className="copy-button" onClick={downloadComponent}>Download .tsx ↓</button>
+              <button
+                className="copy-button"
+                onClick={async () => {
+                  try { await navigator.clipboard.writeText(snippet); setCopied(true); }
+                  catch { setStorageState('Clipboard unavailable. Select and copy the code manually.'); }
+                }}
+              >
+                {copied ? '✓ Copied' : 'Copy React code'} <span>↗</span>
+              </button>
+              <button className="copy-button" onClick={downloadComponent}>Download .tsx ↓</button>
             </div>
           </div>
           <pre><code>{snippet}</code></pre>
         </div>
       </div>
 
-      {/* ── 3-column workspace — fills remaining viewport ──────────── */}
-      <main className="workspace" aria-label="SpatialKit model inspector">
+      {labOpen ? <ControlsLab onBack={() => showLab(false)} /> : (
+      /* ── 3-column workspace — fills remaining viewport ──────────── */
+      <main className={`workspace ${presentMode ? 'presentation-mode' : ''}`} aria-label="SpatialKit model inspector">
 
         {/* ── Left: Assembly panel ─── */}
         <aside className="parts-panel" aria-label="Assembly parts list">
@@ -459,7 +787,7 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                     role="treeitem"
                     className={`part-item ${selected?.id === part.id ? 'selected' : ''}`}
                     aria-selected={selected?.id === part.id}
-                    onClick={() => selectPart(part.id)}
+                    onClick={() => selectPart(part.id, true)}
                   >
                     <span className="part-glyph" aria-hidden="true">◈</span>
                     <span className="part-label-wrap">
@@ -488,33 +816,104 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
         </aside>
 
         {/* ── Center: 3D Viewport ─── */}
-        <section className={`viewport ${placingHotspot ? 'placing-hotspot' : ''} ${measuring ? 'measuring' : ''}`} aria-label="Interactive 3D model">
+        <section
+          ref={viewportRef}
+          className={`viewport ${placingHotspot ? 'placing-hotspot' : ''} ${measuring ? 'measuring' : ''} env-${envPreset}`}
+          aria-label="Interactive 3D model"
+        >
+          {shutterFlash && <div className="viewport-shutter-flash" aria-hidden="true" />}
+
           <div className="viewport-top">
             <span className="view-label">
               <span className="status-dot" aria-hidden="true" />
-              PERSPECTIVE
+              {turntable ? '360° TURNTABLE' : 'PERSPECTIVE'}
             </span>
+
+            {/* Studio Lighting & Backdrop Presets (Martech3D-inspired) */}
+            <div className="studio-preset-bar" role="group" aria-label="Studio lighting environment">
+              {(Object.keys(ENVIRONMENT_PRESETS) as StudioEnvironmentPreset[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`studio-preset-pill ${envPreset === key ? 'active' : ''}`}
+                  onClick={() => setEnvPreset(key)}
+                >
+                  {ENVIRONMENT_PRESETS[key].label}
+                </button>
+              ))}
+            </div>
+
             <span className="view-file">
               {model.filename} <span>/</span> 3D INSPECTOR
             </span>
           </div>
 
+          {/* Guided Feature Tour Callout HUD (Martech3D-inspired auto-tabs + camera fly-to) */}
+          {activeTourStop && (
+            <div className="tour-hud-card" role="region" aria-label="Guided feature tour">
+              <div className="tour-progress-track">
+                <div
+                  key={`${activeTourStop.id}-${tourPaused ? 'paused' : 'play'}`}
+                  className={`tour-progress-fill ${tourPaused ? 'paused' : ''}`}
+                />
+              </div>
+              <div className="tour-hud-top">
+                <span className="tour-step-badge">
+                  TOUR {String((tourIndex % tourStops.length) + 1).padStart(2, '0')} / {String(tourStops.length).padStart(2, '0')}
+                </span>
+                <strong>{activeTourStop.partTitle}</strong>
+                <div className="tour-hud-controls">
+                  <button
+                    type="button"
+                    aria-label="Previous tour stop"
+                    onClick={() => setTourIndex((i) => (i - 1 + tourStops.length) % tourStops.length)}
+                  >◀</button>
+                  <button
+                    type="button"
+                    aria-label={tourPaused ? 'Resume tour' : 'Pause tour'}
+                    onClick={() => setTourPaused((p) => !p)}
+                  >{tourPaused ? '▶' : '⏸'}</button>
+                  <button
+                    type="button"
+                    aria-label="Next tour stop"
+                    onClick={() => setTourIndex((i) => (i + 1) % tourStops.length)}
+                  >▶</button>
+                  <button
+                    type="button"
+                    aria-label="Exit guided tour"
+                    onClick={() => setTourActive(false)}
+                  >×</button>
+                </div>
+              </div>
+              <p className="tour-hud-caption">{activeTourStop.caption}</p>
+            </div>
+          )}
+
+          {snapshotToast && (
+            <div className="snapshot-toast" role="status">
+              <span>📷</span> {snapshotToast}
+            </div>
+          )}
+
           <Canvas
-            dpr={[1, 1.75]}
+            dpr={[1, 2]}
             camera={{ position: [5.1, 3.7, 5.4], fov: 39 }}
-            gl={{ localClippingEnabled: true }}
-            onPointerMissed={() => { if (!placingHotspot) selectPart(null); }}
+            gl={{ localClippingEnabled: true, preserveDrawingBuffer: true }}
+            onPointerMissed={() => { if (!placingHotspot && !tourActive) selectPart(null); }}
             fallback={
               <div className="scene-message">
                 This preview needs WebGL. Try a browser with hardware acceleration enabled.
               </div>
             }
           >
-            <color attach="background" args={[theme === 'dark' ? '#111a2c' : '#e8eef8']} />
-            <ambientLight intensity={1.2} />
-            <hemisphereLight args={['#ffffff', '#687a69', 2]} />
-            <directionalLight position={[4, 7, 5]} intensity={3.2} />
-            <directionalLight position={[-4, 3, -2]} intensity={1.8} color="#c5dfed" />
+            <color attach="background" args={[canvasBg]} />
+            <ambientLight intensity={env.ambient} />
+            <hemisphereLight args={[env.hemiSky, env.hemiGround, env.hemiIntensity]} />
+            <directionalLight position={env.keyPos} intensity={env.keyIntensity} color={env.keyColor} />
+            <directionalLight position={env.fillPos} intensity={env.fillIntensity} color={env.fillColor} />
+            {env.rimPos && (
+              <directionalLight position={env.rimPos} intensity={env.rimIntensity ?? 1.5} color={env.rimColor ?? '#ffffff'} />
+            )}
 
             <SceneError onReset={onDemo}>
               <Suspense fallback={<Html center><div className="scene-message">Preparing your assembly…</div></Html>}>
@@ -551,7 +950,7 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                 </SpatialProvider>
                 <ContactShadows
                   position={[0, -0.012, 0]}
-                  opacity={0.3}
+                  opacity={env.shadowOpacity}
                   scale={12}
                   blur={2.5}
                   far={5}
@@ -561,14 +960,21 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
               </Suspense>
             </SceneError>
 
-            <gridHelper args={[20, 40, '#cfcec4', '#dfded5']} position={[0, -0.025, 0]} />
+            {env.showGrid && (
+              <gridHelper args={[20, 40, env.gridPrimary, env.gridSecondary]} position={[0, -0.025, 0]} />
+            )}
             <BlenderControls
               ref={controls}
               makeDefault
               target={[0, 1, 0]}
-              minDistance={3}
+              minDistance={2.5}
               maxDistance={14}
               enableDamping
+            />
+            <ViewportDirector
+              turntable={turntable}
+              focusRequest={focusRequest}
+              controlsRef={controls}
             />
           </Canvas>
 
@@ -639,6 +1045,44 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
             </div>
             <div className="view-actions">
               <button
+                className="view-action-pill"
+                aria-label={tourActive ? 'Stop guided feature tour' : 'Start guided feature tour'}
+                title="Guided Camera Tour across annotations & parts"
+                aria-pressed={tourActive}
+                onClick={() => {
+                  setTourActive((active) => {
+                    const next = !active;
+                    if (next) {
+                      setTourPaused(false);
+                      setTourIndex(0);
+                    }
+                    return next;
+                  });
+                }}
+              >
+                {tourActive ? '■ Stop tour' : '▶ Tour'}
+              </button>
+              <button
+                className="view-action-pill"
+                aria-label={turntable ? 'Stop 360 turntable orbit' : 'Start 360 turntable orbit'}
+                title="360° Studio Turntable Auto-Orbit"
+                aria-pressed={turntable}
+                onClick={() => setTurntable((t) => !t)}
+              >
+                ⟳ 360°
+              </button>
+              <button
+                aria-label="Capture Studio PNG Snapshot"
+                title="Capture high-res Studio PNG Snapshot"
+                onClick={captureStudioSnapshot}
+              >📷</button>
+              <button
+                aria-label={presentMode ? 'Exit presentation mode' : 'Enter fullscreen presentation mode'}
+                title="Toggle Presentation Showcase Mode (hide panels)"
+                aria-pressed={presentMode}
+                onClick={() => setPresentMode((p) => !p)}
+              >⛶</button>
+              <button
                 aria-label={crossSectionEnabled ? 'Disable cross-section view' : 'Enable cross-section view'}
                 title="Cross-section / Slicing Plane"
                 aria-pressed={crossSectionEnabled}
@@ -678,7 +1122,10 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
               <button
                 aria-label="Reset camera view"
                 title="Reset camera view"
-                onClick={() => controls.current?.reset()}
+                onClick={() => {
+                  setFocusRequest(null);
+                  controls.current?.reset();
+                }}
               >↺</button>
               <button
                 aria-label={showNotes ? 'Hide annotations' : 'Show annotations'}
@@ -736,15 +1183,22 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                 </div>
 
                 {selectedNotes.map((note) => (
-                  <div className="note-card" key={note.id}>
+                  <div
+                    className="note-card"
+                    key={note.id}
+                    onClick={() => triggerCameraFocus(note.target, note.point)}
+                    title="Click to focus camera on this note"
+                  >
                     <span className="note-mark">↳</span>
-                    <p>{note.label}{note.point && <small>Surface hotspot</small>}</p>
-                    <button className="edit-note" aria-label={`Edit note: ${note.label}`} onClick={() => { setEditingNote(note.id); setDraft(note.label); }}>Edit</button>
+                    <p>{note.label}{note.point && <small>Surface hotspot · Focus ↗</small>}</p>
+                    <button className="edit-note" aria-label={`Edit note: ${note.label}`} onClick={(e) => { e.stopPropagation(); setEditingNote(note.id); setDraft(note.label); }}>Edit</button>
                     <button
                       aria-label={`Delete note: ${note.label}`}
-                      onClick={() =>
-                        { setNotes((cur) => cur.filter((n) => n.id !== note.id)); if (editingNote === note.id) { setEditingNote(null); setDraft(''); } }
-                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setNotes((cur) => cur.filter((n) => n.id !== note.id));
+                        if (editingNote === note.id) { setEditingNote(null); setDraft(''); }
+                      }}
                     >×</button>
                   </div>
                 ))}
@@ -796,11 +1250,10 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
               <div className="eyebrow"><span className="status-dot" /> START WITH A PART</div>
               <h2>A little detail.<br />A lot of context.</h2>
               <p>
-                Click a part of the model or choose one from the assembly to
-                inspect it and attach a note.
+                Click a part of the model, start the <strong>Guided Tour</strong>, or choose a part from the assembly to inspect it.
               </p>
               <button
-                onClick={() => selectPart(model.id === 'pump' ? 'pressure-valve' : parts[0]?.id ?? null)}
+                onClick={() => selectPart(model.id === 'pump' ? 'pressure-valve' : parts[0]?.id ?? null, true)}
                 disabled={!parts.length}
               >
                 {model.id === 'pump' ? 'Explore the pressure valve' : 'Explore the first part'} <span>↗</span>
@@ -843,7 +1296,7 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
           </div>
         </aside>
       </main>
-      </>}
+      )}
     </div>
   );
 }
