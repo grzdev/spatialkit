@@ -26,7 +26,7 @@ import {
   type SurfaceHit,
 } from 'spatialkit/react';
 import { INITIAL_NOTES, parseNotes, notesKey, annotationOffset, type Note } from './notes';
-import { DEMO_MODEL, MODEL_FIT, prepareModel, type ModelAsset } from './model-files';
+import { DEMO_MODEL, MODEL_FIT, prepareModel, prepareModelFromUrl, type ModelAsset } from './model-files';
 import { generateComponent, publicFilename, INSTALL_COMMAND } from './integration';
 import { ControlsLab } from './ControlsLab';
 import './style.css';
@@ -1315,6 +1315,31 @@ function App() {
   const request = useRef(0);
   useEffect(() => () => { request.current++; }, []);
   useEffect(() => () => model.dispose?.(), [model]);
+
+  // Support opening any 3D model via URL query param (?modelUrl=...) or extension postMessage
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const initialUrl = params.get('modelUrl') || params.get('model');
+    if (initialUrl) {
+      setUploading(true);
+      prepareModelFromUrl(initialUrl)
+        .then((next) => { setModel(next); setUploadError(''); })
+        .catch((err) => setUploadError(err instanceof Error ? err.message : 'Could not load model from URL.'))
+        .finally(() => setUploading(false));
+    }
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'SPATIALKIT_LOAD_MODEL' && typeof event.data.url === 'string') {
+        setUploading(true);
+        prepareModelFromUrl(event.data.url)
+          .then((next) => { setModel(next); setUploadError(''); })
+          .catch((err) => setUploadError(err instanceof Error ? err.message : 'Could not load model from URL.'))
+          .finally(() => setUploading(false));
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+
   async function upload(file: File) {
     const token = ++request.current;
     setUploading(true); setUploadError('');

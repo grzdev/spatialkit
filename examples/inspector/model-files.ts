@@ -88,3 +88,14 @@ export async function prepareModel(file: File): Promise<ModelAsset> {
     object: gltf.scene, animations: gltf.animations, hasAnimations: gltf.animations.length > 0, file, dispose: () => disposeAsset(gltf.scene),
   };
 }
+
+export async function prepareModelFromUrl(url: string, defaultName?: string): Promise<ModelAsset> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not load model from URL (${response.status})`);
+  const blob = await response.blob();
+  const cleanUrl = url.split('?')[0].split('#')[0];
+  const urlFilename = cleanUrl.split('/').pop() || 'model.glb';
+  const filename = defaultName || (urlFilename.endsWith('.glb') || urlFilename.endsWith('.gltf') ? urlFilename : `${urlFilename}.glb`);
+  const file = new File([blob], filename, { type: blob.type || 'model/gltf-binary' });
+  return prepareModel(file);
+}

@@ -1425,7 +1425,28 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
 .lab-card:hover .lab-card-head > span { color: var(--accent); }
 .lab-card-head { display: flex; align-items: center; justify-content: space-between; padding: 0 22px; border-bottom: 1px solid var(--border); font: 10px 'JetBrains Mono', monospace; color: var(--muted-2); }
 .lab-card-head > span { transition: color .2s ease; font-weight: 600; }
-.lab-card-head > div { display: flex; gap: 5px; }
+.lab-card-head > div { display: flex; align-items: center; gap: 6px; }
+.lab-mode-toggle {
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--accent-dim);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font: 600 8.5px 'JetBrains Mono', monospace;
+  letter-spacing: .5px;
+  cursor: pointer;
+  transition: all .18s ease;
+}
+.lab-mode-toggle:hover {
+  background: var(--accent);
+  color: #fff;
+  transform: translateY(-1px);
+}
+.lab-mode-toggle.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.45);
+}
 .lab-card-head small { padding: 4px 6px; border: 1px solid var(--border); border-radius: 3px; color: var(--muted); font-size: 8px; letter-spacing: .6px; transition: border-color .2s ease, color .2s ease; }
 .lab-card:hover .lab-card-head small { border-color: var(--border-2); }
 .lab-stage {
@@ -1439,6 +1460,18 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
   background-size: 32px 32px;
   transition: background-color .25s ease;
+}
+.lab-3d-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+.lab-3d-stage canvas {
+  width: 100% !important;
+  height: 100% !important;
+  outline: none;
 }
 .lab-stage::after { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 80px color-mix(in srgb, var(--bg) 46%, transparent); transition: box-shadow .25s ease; }
 .lab-card:hover .lab-stage::after { box-shadow: inset 0 0 70px color-mix(in srgb, var(--accent) 8%, transparent); }

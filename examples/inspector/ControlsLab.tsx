@@ -1,22 +1,39 @@
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
-import { DialControl, JoystickControl, TimelineScrubber, type JoystickValue } from 'spatialkit/react';
+import { useEffect, useRef, useState, Suspense, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { DialControl, JoystickControl, TimelineScrubber, SelectableModel, SpatialProvider, BlenderControls, type JoystickValue } from 'spatialkit/react';
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-function ControlCard({ index, number, title, description, tags, code, children }: {
+function ControlCard({ index, number, title, description, tags, code, toggle3D, children }: {
   index: number;
   number: string;
   title: string;
   description: string;
   tags: string[];
   code: string;
+  toggle3D?: { active: boolean; onToggle: () => void; label?: string };
   children: ReactNode;
 }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => { if (!copied) return; const timer = setTimeout(() => setCopied(false), 1600); return () => clearTimeout(timer); }, [copied]);
   return (
     <article className="lab-card" style={{ '--card-index': index } as CSSProperties}>
-      <div className="lab-card-head"><span>{number}</span><div>{tags.map((tag) => <small key={tag}>{tag}</small>)}</div></div>
+      <div className="lab-card-head">
+        <span>{number}</span>
+        <div>
+          {toggle3D && (
+            <button
+              type="button"
+              className={`lab-mode-toggle ${toggle3D.active ? 'active' : ''}`}
+              onClick={toggle3D.onToggle}
+              title="Toggle between 2D schematic and real 3D model"
+            >
+              {toggle3D.active ? '✦ 3D Scene' : '⬡ View 3D'}
+            </button>
+          )}
+          {tags.map((tag) => <small key={tag}>{tag}</small>)}
+        </div>
+      </div>
       <div className="lab-stage">{children}</div>
       <div className="lab-card-copy">
         <h2>{title}</h2>
@@ -24,6 +41,67 @@ function ControlCard({ index, number, title, description, tags, code, children }
         <button onClick={async () => { await navigator.clipboard.writeText(code); setCopied(true); }}>{copied ? '✓ Copied' : 'Copy example'} <span>↗</span></button>
       </div>
     </article>
+  );
+}
+
+/** Embedded 3D stage for Controls Lab experiments driven in real time by the control value. */
+function Lab3DViewer({
+  src,
+  modelId,
+  animationProgress,
+  lightIntensity,
+  joystick,
+  cameraPos = [0, 1.2, 3.4],
+  fit = 2.4,
+}: {
+  src: string;
+  modelId: string;
+  animationProgress?: number;
+  lightIntensity?: number;
+  joystick?: JoystickValue;
+  cameraPos?: [number, number, number];
+  fit?: number;
+}) {
+  return (
+    <div className="lab-3d-stage">
+      <Canvas camera={{ position: cameraPos, fov: 42 }}>
+        <color attach="background" args={['#0e1526']} />
+        <ambientLight intensity={lightIntensity !== undefined ? 0.3 + lightIntensity * 0.7 : 1.4} />
+        {lightIntensity !== undefined ? (
+          <pointLight
+            position={[
+              Math.cos((lightIntensity - 0.5) * Math.PI * 2) * 2.8,
+              2.2,
+              Math.sin((lightIntensity - 0.5) * Math.PI * 2) * 2.8,
+            ]}
+            intensity={1.2 + lightIntensity * 14}
+            color="#fef08a"
+          />
+        ) : (
+          <>
+            <directionalLight position={[4, 6, 4]} intensity={2.6} />
+            <directionalLight position={[-4, 2, -3]} intensity={1.2} color="#93c5fd" />
+          </>
+        )}
+        <Suspense fallback={null}>
+          <SpatialProvider>
+            <group
+              position={joystick ? [joystick.x * 0.9, 0, -joystick.y * 0.9] : [0, 0, 0]}
+              rotation={joystick ? [-joystick.y * 0.35, joystick.x * 0.75, 0] : [0, 0, 0]}
+            >
+              <SelectableModel
+                src={src}
+                modelId={modelId}
+                animationProgress={animationProgress}
+                fit={fit}
+              />
+            </group>
+          </SpatialProvider>
+        </Suspense>
+        <gridHelper args={[10, 20, '#1e293b', '#0f172a']} position={[0, -0.01, 0]} />
+        <BlenderControls target={[0, 0.35, 0]} minDistance={1.8} maxDistance={8} enableDamping />
+      </Canvas>
+    </div>
   );
 }
 
@@ -399,6 +477,11 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
   const [throttle, setThrottle] = useState(0.35);
   const [joystick, setJoystick] = useState<JoystickValue>({ x: 0, y: 0 });
   const [light, setLight] = useState(0.72);
+  const [active3D, setActive3D] = useState<Record<string, boolean>>({
+    '01': true,
+    '07': true,
+    '08': true,
+  });
 
   return (
     <main className="controls-lab">
@@ -422,12 +505,27 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
       </section>
 
       <section className="lab-grid" aria-label="Interactive control experiments">
-        <ControlCard index={0} number="01" title="Pendulum scrub" description="Map a normalized value onto any angle or animation frame." tags={['TIMELINE', 'PHYSICS']} code={`const [progress, setProgress] = useState(0.5);\n<TimelineScrubber value={progress} onChange={setProgress} />\n// angle = -50 + progress * 100`}>
-          <div className="pendulum-rig">
-            <div className="pendulum-pin" />
-            <div className="pendulum-arm" style={{ transform: `rotate(${-50 + pendulum * 100}deg)` }}><b /></div>
-          </div>
-          <div className="lab-control-row"><TimelineScrubber value={pendulum} onChange={setPendulum} label="Pendulum angle" /><output>{Math.round(-50 + pendulum * 100)}°</output></div>
+        <ControlCard
+          index={0}
+          number="01"
+          title="Timeline scrub"
+          description="Map a normalized value onto any angle, physics rig, or glTF 3D animation."
+          tags={['TIMELINE', active3D['01'] ? '3D GLTF' : 'PHYSICS']}
+          toggle3D={{
+            active: !!active3D['01'],
+            onToggle: () => setActive3D((prev) => ({ ...prev, '01': !prev['01'] })),
+          }}
+          code={`const [progress, setProgress] = useState(0.5);\n<TimelineScrubber value={progress} onChange={setProgress} />\n// <SelectableModel src="/models/Fox.glb" animationProgress={progress} />`}
+        >
+          {active3D['01'] ? (
+            <Lab3DViewer src="/models/Fox.glb" modelId="fox-anim" animationProgress={pendulum} fit={2.6} cameraPos={[0, 1.2, 3.2]} />
+          ) : (
+            <div className="pendulum-rig">
+              <div className="pendulum-pin" />
+              <div className="pendulum-arm" style={{ transform: `rotate(${-50 + pendulum * 100}deg)` }}><b /></div>
+            </div>
+          )}
+          <div className="lab-control-row"><TimelineScrubber value={pendulum} onChange={setPendulum} label="Animation progress" /><output>{Math.round(pendulum * 100)}%</output></div>
         </ControlCard>
 
         <ControlCard index={1} number="02" title="Hydraulic lift" description="Pull the physical hydraulic lever up or down to raise and lower the payload platform." tags={['LEVER', 'MACHINE']} code={`<TimelineScrubber orientation="vertical" value={height} onChange={setHeight} />`}>
@@ -600,15 +698,41 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
           </div>
         </ControlCard>
 
-        <ControlCard index={6} number="07" title="Robot joystick" description="A bounded two-axis control works for cameras, robots, cursors, and tools." tags={['2-AXIS', 'ROBOTICS']} code={`const [position, setPosition] = useState({ x: 0, y: 0 });\n<JoystickControl value={position} onChange={setPosition} />`}>
-          <div className="joystick-demo">
-            <div className="robot-field"><span className="field-axis x" /><span className="field-axis y" /><div className="robot-puck" style={{ left: `${50 + joystick.x * 38}%`, top: `${50 - joystick.y * 38}%` }}>◆</div></div>
-            <JoystickControl className="lab-joystick" size={116} value={joystick} onChange={setJoystick} label="Robot position" />
-            <output>X {joystick.x.toFixed(2)} · Y {joystick.y.toFixed(2)}</output>
-          </div>
+        <ControlCard
+          index={6}
+          number="07"
+          title="Robot joystick"
+          description="A bounded two-axis control drives mobile robots, rovers, cameras, and tools in 2D or 3D."
+          tags={['2-AXIS', active3D['07'] ? '3D ROVER' : 'ROBOTICS']}
+          toggle3D={{
+            active: !!active3D['07'],
+            onToggle: () => setActive3D((prev) => ({ ...prev, '07': !prev['07'] })),
+          }}
+          code={`const [pos, setPos] = useState({ x: 0, y: 0 });\n<JoystickControl value={pos} onChange={setPos} />\n// <group position={[pos.x, 0, -pos.y]} rotation={[-pos.y * 0.35, pos.x * 0.75, 0]}><SelectableModel src="/models/CesiumMilkTruck.glb" /></group>`}
+        >
+          {active3D['07'] ? (
+            <Lab3DViewer src="/models/CesiumMilkTruck.glb" modelId="truck-rover" joystick={joystick} fit={2.5} cameraPos={[0, 1.8, 3.6]} />
+          ) : (
+            <div className="joystick-demo">
+              <div className="robot-field"><span className="field-axis x" /><span className="field-axis y" /><div className="robot-puck" style={{ left: `${50 + joystick.x * 38}%`, top: `${50 - joystick.y * 38}%` }}>◆</div></div>
+            </div>
+          )}
+          <JoystickControl className="lab-joystick" size={116} value={joystick} onChange={setJoystick} label="Robot position" />
+          <output>X {joystick.x.toFixed(2)} · Y {joystick.y.toFixed(2)}</output>
         </ControlCard>
 
-        <ControlCard index={7} number="08" title="Inspection light" description="Rotate the dimmer crank to shine an overhead inspection beam directly onto Blender's Suzanne mesh." tags={['MATERIAL', 'LIGHT']} code={`<DialControl value={intensity} onChange={setIntensity} />\n<spotLight position={[0, 4, 0]} intensity={intensity * 8} />`}>
+        <ControlCard
+          index={7}
+          number="08"
+          title="Inspection light"
+          description="Rotate the dimmer crank to cast real-time lighting across PBR materials or Blender's Suzanne."
+          tags={['MATERIAL', active3D['08'] ? '3D PBR HELMET' : 'LIGHT']}
+          toggle3D={{
+            active: !!active3D['08'],
+            onToggle: () => setActive3D((prev) => ({ ...prev, '08': !prev['08'] })),
+          }}
+          code={`<DialControl value={intensity} onChange={setIntensity} />\n// <pointLight intensity={intensity * 14} /><SelectableModel src="/models/DamagedHelmet.glb" />`}
+        >
           <div className="light-demo" style={{ '--light-level': light } as CSSProperties}>
             <div className="light-control-dock">
               <TactileDial
@@ -621,16 +745,19 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
               <output>{percent(light)}</output>
             </div>
 
-            {/* Overhead rig aligned so the bulb shines directly down onto Suzanne */}
-            <div className="light-rig-column">
-              <div className="lamp-overhead">
-                <div className="lamp-cord" />
-                <div className="lamp-shade" />
-                <div className="lamp-bulb" />
+            {active3D['08'] ? (
+              <Lab3DViewer src="/models/DamagedHelmet.glb" modelId="damaged-helmet" lightIntensity={light} fit={2.2} cameraPos={[0, 0.4, 2.9]} />
+            ) : (
+              <div className="light-rig-column">
+                <div className="lamp-overhead">
+                  <div className="lamp-cord" />
+                  <div className="lamp-shade" />
+                  <div className="lamp-bulb" />
+                </div>
+                <div className="light-cone" />
+                <SuzanneMonkey light={light} />
               </div>
-              <div className="light-cone" />
-              <SuzanneMonkey light={light} />
-            </div>
+            )}
           </div>
         </ControlCard>
       </section>

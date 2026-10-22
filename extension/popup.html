@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SpatialKit 3D Companion</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 360px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 16px;
+    }
+    .sk-pop-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid #1e293b;
+      margin-bottom: 14px;
+    }
+    .sk-logo {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      background: #2563eb;
+      border-radius: 6px;
+      font-size: 15px;
+      font-weight: 800;
+      color: #ffffff;
+      position: relative;
+    }
+    .sk-logo span {
+      font-size: 10px;
+      position: absolute;
+      right: -3px;
+      top: -5px;
+      color: #60a5fa;
+    }
+    .sk-pop-title h1 {
+      font-size: 13.5px;
+      font-weight: 700;
+    }
+    .sk-pop-title p {
+      font-size: 10px;
+      color: #94a3b8;
+    }
+    .sk-pop-section {
+      margin-bottom: 14px;
+    }
+    .sk-section-label {
+      font-size: 9px;
+      font-family: monospace;
+      letter-spacing: 0.8px;
+      color: #64748b;
+      font-weight: 600;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .sk-model-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 8px;
+    }
+    .sk-model-title {
+      font-size: 11px;
+      font-weight: 600;
+      font-family: monospace;
+      color: #e2e8f0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 8px;
+    }
+    .sk-model-btns {
+      display: flex;
+      gap: 6px;
+    }
+    button {
+      cursor: pointer;
+      font-family: inherit;
+      border-radius: 6px;
+      font-size: 10.5px;
+      font-weight: 600;
+      transition: all 0.15s ease;
+      border: 1px solid transparent;
+    }
+    .btn-primary {
+      background: #2563eb;
+      color: #ffffff;
+      padding: 6px 10px;
+      flex: 1;
+    }
+    .btn-primary:hover {
+      background: #1d4ed8;
+    }
+    .btn-secondary {
+      background: #0f172a;
+      color: #cbd5e1;
+      border-color: #334155;
+      padding: 6px 10px;
+      flex: 1;
+    }
+    .btn-secondary:hover {
+      background: #334155;
+      color: #ffffff;
+    }
+    .sk-empty-hint {
+      background: #1e293b;
+      border: 1px dashed #334155;
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+      font-size: 11px;
+      color: #94a3b8;
+      line-height: 1.5;
+    }
+    .sk-url-box {
+      display: flex;
+      gap: 6px;
+    }
+    .sk-url-input {
+      flex: 1;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #f8fafc;
+      font-size: 11px;
+      padding: 7px 10px;
+      outline: none;
+    }
+    .sk-url-input:focus {
+      border-color: #2563eb;
+    }
+    .sk-quick-links {
+      display: flex;
+      gap: 8px;
+      padding-top: 10px;
+      border-top: 1px solid #1e293b;
+    }
+    .sk-quick-links button {
+      flex: 1;
+      padding: 7px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      font-size: 10px;
+    }
+    .sk-quick-links button:hover {
+      color: #f8fafc;
+      border-color: #60a5fa;
+      background: #1e293b;
+    }
+  </style>
+</head>
+<body>
+  <div class="sk-pop-header">
+    <span class="sk-logo">S<span>↗</span></span>
+    <div class="sk-pop-title">
+      <h1>SpatialKit 3D Companion</h1>
+      <p>Inspect & interact with web 3D models</p>
+    </div>
+  </div>
+
+  <div class="sk-pop-section">
+    <div class="sk-section-label">
+      <span>MODELS ON ACTIVE TAB</span>
+      <span id="detected-count">Scanning...</span>
+    </div>
+    <div id="models-container">
+      <div class="sk-empty-hint">Scanning active page for 3D models (.glb, .gltf, &lt;model-viewer&gt;)...</div>
+    </div>
+  </div>
+
+  <div class="sk-pop-section">
+    <div class="sk-section-label">
+      <span>PASTE ANY 3D MODEL URL</span>
+    </div>
+    <div class="sk-url-box">
+      <input type="url" id="custom-url-input" class="sk-url-input" placeholder="https://example.com/asset.glb">
+      <button type="button" id="btn-inspect-custom" class="btn-primary">Inspect</button>
+    </div>
+  </div>
+
+  <div class="sk-quick-links">
+    <button type="button" id="btn-open-inspector">Open Inspector ↗</button>
+    <button type="button" id="btn-open-lab">Controls Lab ↗</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
