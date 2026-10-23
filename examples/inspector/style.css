@@ -1572,6 +1572,7 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   opacity: .85;
   transition: height .04s linear;
 }
+.pull-lever.is-active .pull-lever-fill { transition: none !important; }
 .pull-lever-carriage {
   position: absolute;
   left: 16px;
@@ -1581,7 +1582,7 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   transition: top .04s linear;
   pointer-events: none;
 }
-.pull-lever.is-active .pull-lever-carriage { transition: none; }
+.pull-lever.is-active .pull-lever-carriage { transition: none !important; }
 .pull-lever-shaft {
   width: 22px;
   height: 8px;
@@ -1625,11 +1626,17 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
 
 /* 02 Hydraulic Lift */
 .lift-demo, .syringe-demo { display: flex; align-items: center; gap: 26px; }
-.lift-shaft { height: 165px; width: 115px; position: relative; border-left: 2px solid var(--border-2); border-right: 2px solid var(--border-2); border-bottom: 5px solid var(--ink-2); cursor: ns-resize; touch-action: none; }
+.lift-shaft { height: 165px; width: 115px; position: relative; border-left: 2px solid var(--border-2); border-right: 2px solid var(--border-2); border-bottom: 5px solid var(--ink-2); cursor: ns-resize; touch-action: none; user-select: none; }
 .lift-shaft > i { position: absolute; bottom: 0; left: calc(50% - 7px); width: 14px; background: linear-gradient(90deg,#64748b,#e2e8f0,#64748b); transition: height .05s linear; }
 .lift-platform { position: absolute; left: 50%; width: 104px; height: 12px; transform: translateX(-50%); background: var(--accent); transition: bottom .05s linear; box-shadow: 0 5px 12px #0f172a44; border-radius: 2px; }
 .lift-platform::before { content: ''; position: absolute; width: 46px; height: 30px; left: 29px; bottom: 12px; border: 1px solid var(--border-2); background: var(--surface); border-radius: 2px; }
 .lift-platform span { position: absolute; width: 100%; bottom: 51px; text-align: center; font: 8px 'JetBrains Mono', monospace; color: var(--muted); }
+.lift-shaft.is-dragging > i,
+.lift-shaft.is-dragging .lift-platform,
+.lift-demo.is-dragging .lift-shaft > i,
+.lift-demo.is-dragging .lift-platform {
+  transition: none !important;
+}
 
 /* 03 Surgical / Medical Robotic Gripper */
 .gripper-demo {
@@ -1889,6 +1896,14 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
 .syringe-graduations i:nth-child(odd) { width: 15px; }
 .syringe-liquid { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(180deg, #5eead4cc, #0f766e); transition: height .04s linear; }
 .syringe-plunger { position: absolute; left: 5px; right: 5px; height: 10px; border-radius: 3px; background: var(--ink); box-shadow: 0 -4px 0 var(--accent); transition: top .04s linear; z-index: 2; }
+.syringe-assembly.is-dragging .syringe-rod-assembly,
+.syringe-assembly.is-dragging .syringe-liquid,
+.syringe-assembly.is-dragging .syringe-plunger,
+.syringe-demo.is-dragging .syringe-rod-assembly,
+.syringe-demo.is-dragging .syringe-liquid,
+.syringe-demo.is-dragging .syringe-plunger {
+  transition: none !important;
+}
 .syringe-nozzle {
   width: 12px;
   height: 18px;
@@ -2011,13 +2026,346 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
 .turbine-demo output { grid-column: 1 / -1; }
 @keyframes lab-spin { to { transform: rotate(360deg); } }
 
-/* 07 Robot Joystick (kept untouched in feel) */
-.joystick-demo { display: grid; grid-template-columns: 150px 116px; grid-template-rows: 150px auto; gap: 8px 28px; align-items: center; }
-.robot-field { width: 150px; height: 150px; position: relative; border: 1px solid var(--border-2); border-radius: 8px; background: var(--surface); overflow: hidden; }
-.field-axis { position: absolute; background: var(--border); }.field-axis.x { left: 0; right: 0; top: 50%; height: 1px; }.field-axis.y { top: 0; bottom: 0; left: 50%; width: 1px; }
-.robot-puck { position: absolute; transform: translate(-50%,-50%); width: 32px; height: 32px; display: grid; place-items: center; border-radius: 7px; background: var(--accent); color: white; box-shadow: 0 8px 18px #0f172a44; transition: left .1s linear, top .1s linear; }
-.lab-joystick { outline: none; }.lab-joystick:focus-visible { box-shadow: 0 0 0 3px var(--accent); }
-.joystick-demo output { grid-column: 1/-1; text-align: center; font-size: 10px; }
+/* 07 POV Shooter Target Tracker & Tactile Physical Joystick */
+.joystick-demo {
+  display: grid;
+  grid-template-columns: 148px 124px;
+  grid-template-rows: 148px auto;
+  gap: 8px 24px;
+  align-items: center;
+  justify-content: center;
+}
+.joystick-demo output {
+  grid-column: 1 / -1;
+  text-align: center;
+  font-size: 10px;
+}
+
+/* Tactile Physical Flight / Arcade Joystick */
+.tactile-joystick-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.tactile-joystick {
+  position: relative;
+  border-radius: 50%;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+  outline: none;
+  flex-shrink: 0;
+}
+.tactile-joystick:active,
+.tactile-joystick.is-active {
+  cursor: grabbing;
+}
+.tactile-joystick:focus-visible .joystick-bezel {
+  box-shadow: 0 0 0 3px var(--accent), 0 12px 28px rgba(2, 6, 23, 0.7);
+}
+
+.joystick-bezel {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 180deg at 50% 50%, #1e293b, #334155 25%, #1e293b 50%, #334155 75%, #1e293b);
+  border: 2px solid #475569;
+  box-shadow:
+    0 12px 28px rgba(2, 6, 23, 0.65),
+    inset 0 2px 4px rgba(255, 255, 255, 0.16),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.75);
+}
+.cardinal-tick {
+  position: absolute;
+  font: 700 8px 'JetBrains Mono', monospace;
+  color: #94a3b8;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.cardinal-tick.n { top: 7px; left: 50%; }
+.cardinal-tick.e { top: 50%; right: 2px; }
+.cardinal-tick.s { bottom: 0px; left: 50%; }
+.cardinal-tick.w { top: 50%; left: 7px; }
+
+.joystick-tick-ring {
+  position: absolute;
+  inset: 12px;
+  border-radius: 50%;
+  border: 1px dashed rgba(148, 163, 184, 0.25);
+  pointer-events: none;
+}
+
+.joystick-gaiter {
+  position: absolute;
+  inset: 16px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, #090d16 15%, #111827 50%, #030712 100%);
+  box-shadow: inset 0 8px 16px rgba(0, 0, 0, 0.9), inset 0 0 0 1px #1e293b;
+  overflow: hidden;
+}
+.gaiter-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1.5px solid rgba(15, 23, 42, 0.85);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.7), 0 1px 1px rgba(255, 255, 255, 0.05);
+}
+.gaiter-ring.ring-3 { inset: 3px; }
+.gaiter-ring.ring-2 { inset: 10px; }
+.gaiter-ring.ring-1 { inset: 17px; }
+
+.joystick-thumb {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 50%;
+  pointer-events: none;
+  transition: transform 0.04s linear;
+  display: grid;
+  place-items: center;
+}
+.tactile-joystick.is-active .joystick-thumb {
+  transition: none !important;
+}
+
+.thumb-grip-rim {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #475569 0%, #1e293b 70%, #0f172a 100%);
+  border: 2px solid #64748b;
+  box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.35), 0 3px 6px rgba(0,0,0,0.45);
+}
+.thumb-cup {
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 45% 40%, #1e293b 0%, #0f172a 60%, #020617 100%);
+  box-shadow: inset 0 4px 8px rgba(0, 0, 0, 0.85), 0 1px 0 rgba(255, 255, 255, 0.12);
+  display: grid;
+  place-items: center;
+}
+.thumb-crosshair {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 50%;
+}
+.thumb-crosshair::before,
+.thumb-crosshair::after {
+  content: '';
+  position: absolute;
+  background: rgba(148, 163, 184, 0.45);
+}
+.thumb-crosshair::before { width: 100%; height: 1px; top: 50%; transform: translateY(-50%); }
+.thumb-crosshair::after { height: 100%; width: 1px; left: 50%; transform: translateX(-50%); }
+
+.thumb-led {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #334155;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+  transition: all .15s ease;
+}
+.thumb-led.is-lit {
+  background: #2dd4bf;
+  box-shadow: 0 0 8px #2dd4bf, 0 0 14px #2dd4bf;
+}
+
+.joystick-telemetry-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 9px 'JetBrains Mono', monospace;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.joystick-telemetry-bar span {
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.joystick-telemetry-bar span b {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* POV Shooter & Target Tracker 3D */
+.target-tracker-stage {
+  position: relative;
+  width: 100%;
+  height: 270px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #070d18;
+}
+.target-tracker-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  padding: 8px 12px;
+  z-index: 5;
+}
+.hud-top-tape {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font: 8px 'JetBrains Mono', monospace;
+  letter-spacing: .8px;
+  color: #64748b;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.45);
+  padding-bottom: 3px;
+}
+.hud-top-tape .tape-heading {
+  color: #38bdf8;
+  font-weight: 700;
+}
+.hud-reticle-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90px;
+  height: 90px;
+  pointer-events: none;
+}
+.hud-crosshair-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transition: stroke .15s ease;
+}
+.hud-target-bracket {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 44px;
+  pointer-events: none;
+  border: 1px solid #f59e0b;
+  transition: border-color .15s ease, transform .05s linear;
+}
+.hud-target-bracket.is-locked {
+  border-color: #10b981 !important;
+  animation: hud-pulse .4s ease-in-out infinite alternate;
+}
+.hud-target-bracket.is-locked .bracket-label {
+  color: #10b981 !important;
+  border-color: #10b981 !important;
+  background: rgba(6, 78, 59, 0.85) !important;
+}
+.bracket-corner {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-color: inherit;
+}
+.bracket-corner.tl { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; }
+.bracket-corner.tr { top: -1px; right: -1px; border-top: 2px solid; border-right: 2px solid; }
+.bracket-corner.bl { bottom: -1px; left: -1px; border-bottom: 2px solid; border-left: 2px solid; }
+.bracket-corner.br { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; }
+
+.bracket-label {
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font: 700 7px 'JetBrains Mono', monospace;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid #f59e0b;
+  color: #f59e0b;
+}
+
+.hud-bottom-tape {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font: 8px 'JetBrains Mono', monospace;
+  color: #94a3b8;
+  border-top: 1px solid rgba(51, 65, 85, 0.45);
+  padding-top: 3px;
+}
+.hud-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid #334155;
+}
+.hud-status-badge.locked {
+  border-color: #10b981;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+}
+@keyframes hud-pulse {
+  from { transform: translate(-50%, -50%) scale(0.95); }
+  to { transform: translate(-50%, -50%) scale(1.08); }
+}
+
+/* 2D Tactical Radar Scope */
+.radar-2d-scope {
+  position: relative;
+  width: 148px;
+  height: 148px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #081220 0%, #030712 100%);
+  border: 2px solid #1e293b;
+  box-shadow: inset 0 0 16px #020617, 0 8px 18px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+.radar-sweep-beam {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(45, 212, 191, 0.22) 55deg, transparent 56deg);
+  animation: lab-spin 3.5s linear infinite;
+  pointer-events: none;
+}
+.radar-target-blip {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 8px #f59e0b, 0 0 14px #f59e0b;
+  transform: translate(-50%, -50%);
+  transition: left .1s linear, top .1s linear;
+}
+.radar-target-blip.is-locked {
+  background: #10b981;
+  box-shadow: 0 0 10px #10b981, 0 0 20px #10b981;
+}
+.radar-crosshair {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid #38bdf8;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: border-color .15s ease;
+}
+.radar-crosshair.is-locked {
+  border-color: #10b981;
+}
+.radar-crosshair::before,
+.radar-crosshair::after {
+  content: '';
+  position: absolute;
+  background: currentColor;
+}
+.radar-crosshair::before { width: 100%; height: 1px; top: 50%; transform: translateY(-50%); }
+.radar-crosshair::after { height: 100%; width: 1px; left: 50%; transform: translateX(-50%); }
 
 /* 08 Inspection Light — Overhead Bulb Shining Directly onto Blender's Suzanne Monkey */
 .light-demo {

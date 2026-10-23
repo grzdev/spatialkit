@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, Suspense, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
-import { Canvas } from '@react-three/fiber';
-import { DialControl, JoystickControl, TimelineScrubber, SelectableModel, SpatialProvider, BlenderControls, type JoystickValue } from 'spatialkit/react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Vector3, type Group, type Mesh, AdditiveBlending, DoubleSide } from 'three';
+import { DialControl, TimelineScrubber, SelectableModel, SpatialProvider, BlenderControls, type JoystickValue } from 'spatialkit/react';
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -44,62 +45,379 @@ function ControlCard({ index, number, title, description, tags, code, toggle3D, 
   );
 }
 
-/** Embedded 3D stage for Controls Lab experiments driven in real time by the control value. */
-function Lab3DViewer({
-  src,
-  modelId,
-  animationProgress,
-  lightIntensity,
-  joystick,
-  cameraPos = [0, 1.2, 3.4],
-  fit = 2.4,
-}: {
-  src: string;
-  modelId: string;
-  animationProgress?: number;
-  lightIntensity?: number;
-  joystick?: JoystickValue;
-  cameraPos?: [number, number, number];
-  fit?: number;
-}) {
+/** 01 3D Stage: Exploded Industrial Pump Assembly Scrub. */
+function ExplodedPumpViewer({ progress }: { progress: number }) {
   return (
     <div className="lab-3d-stage">
-      <Canvas camera={{ position: cameraPos, fov: 42 }}>
+      <Canvas camera={{ position: [0, 1.2, 3.2], fov: 42 }}>
         <color attach="background" args={['#0e1526']} />
-        <ambientLight intensity={lightIntensity !== undefined ? 0.3 + lightIntensity * 0.7 : 1.4} />
-        {lightIntensity !== undefined ? (
-          <pointLight
-            position={[
-              Math.cos((lightIntensity - 0.5) * Math.PI * 2) * 2.8,
-              2.2,
-              Math.sin((lightIntensity - 0.5) * Math.PI * 2) * 2.8,
-            ]}
-            intensity={1.2 + lightIntensity * 14}
-            color="#fef08a"
-          />
-        ) : (
-          <>
-            <directionalLight position={[4, 6, 4]} intensity={2.6} />
-            <directionalLight position={[-4, 2, -3]} intensity={1.2} color="#93c5fd" />
-          </>
-        )}
+        <ambientLight intensity={1.2} />
+        <directionalLight position={[5, 7, 5]} intensity={2.6} />
+        <directionalLight position={[-4, 3, -3]} intensity={1.3} color="#94a3b8" />
         <Suspense fallback={null}>
           <SpatialProvider>
-            <group
-              position={joystick ? [joystick.x * 0.9, 0, -joystick.y * 0.9] : [0, 0, 0]}
-              rotation={joystick ? [-joystick.y * 0.35, joystick.x * 0.75, 0] : [0, 0, 0]}
-            >
+            <group rotation={[0.15, progress * Math.PI * 0.75, 0]}>
               <SelectableModel
-                src={src}
-                modelId={modelId}
-                animationProgress={animationProgress}
-                fit={fit}
+                src="/models/pump.glb"
+                modelId="pump-assembly"
+                explode={progress * 1.6}
+                fit={2.4}
+                position={[0, 0.1, 0]}
               />
             </group>
           </SpatialProvider>
         </Suspense>
-        <gridHelper args={[10, 20, '#1e293b', '#0f172a']} position={[0, -0.01, 0]} />
-        <BlenderControls target={[0, 0.35, 0]} minDistance={1.8} maxDistance={8} enableDamping />
+        <gridHelper args={[10, 20, '#1e293b', '#0f172a']} position={[0, -0.65, 0]} />
+        <BlenderControls target={[0, 0.25, 0]} minDistance={1.6} maxDistance={7} enableDamping />
+      </Canvas>
+    </div>
+  );
+}
+
+/** 07 3D Stage: Low-Poly POV Shooter & Target Tracker simulation. */
+function TargetShooterScene({
+  joystick,
+  onHUDUpdate,
+}: {
+  joystick: JoystickValue;
+  onHUDUpdate: (info: {
+    isLocked: boolean;
+    distMeters: number;
+    screenX: number;
+    screenY: number;
+    inView: boolean;
+    heading: number;
+  }) => void;
+}) {
+  const { camera } = useThree();
+  const droneRef = useRef<Group>(null);
+  const ringRef = useRef<Mesh>(null);
+  const tempVec = useRef(new Vector3());
+  const aimForward = useRef(new Vector3());
+  const targetDir = useRef(new Vector3());
+
+  useFrame((state) => {
+    const t = state.clock.getElapsedTime();
+    if (!droneRef.current) return;
+
+    // Smooth orbital Lissajous flight path for target drone
+    const tx = Math.sin(t * 0.85) * 2.8 + Math.cos(t * 0.4) * 0.7;
+    const ty = 0.4 + Math.cos(t * 1.1) * 1.1 + Math.sin(t * 0.5) * 0.4;
+    const tz = -4.8 + Math.sin(t * 0.7) * 1.3;
+    droneRef.current.position.set(tx, ty, tz);
+    droneRef.current.rotation.y += 0.03;
+    droneRef.current.rotation.x = Math.sin(t * 1.6) * 0.2;
+
+    if (ringRef.current) {
+      ringRef.current.rotation.z -= 0.04;
+    }
+
+    // Camera aim / turret rotation lerped directly to joystick coordinates
+    const targetYaw = -joystick.x * 0.78;
+    const targetPitch = joystick.y * 0.52;
+    camera.rotation.y += (targetYaw - camera.rotation.y) * 0.22;
+    camera.rotation.x += (targetPitch - camera.rotation.x) * 0.22;
+    camera.rotation.z = -joystick.x * 0.08;
+
+    // Angular check for weapon lock-on
+    camera.getWorldDirection(aimForward.current);
+    targetDir.current.copy(droneRef.current.position).sub(camera.position).normalize();
+    const angle = aimForward.current.angleTo(targetDir.current);
+    const isLocked = angle < 0.22;
+    const distMeters = Math.round(camera.position.distanceTo(droneRef.current.position) * 16);
+
+    // Screen-space projection for targeting bracket
+    tempVec.current.copy(droneRef.current.position).project(camera);
+    const inView = tempVec.current.z < 1;
+    const screenX = (tempVec.current.x * 0.5 + 0.5) * 100;
+    const screenY = (-tempVec.current.y * 0.5 + 0.5) * 100;
+    const heading = Math.round(((camera.rotation.y * 180) / Math.PI + 360) % 360);
+
+    onHUDUpdate({ isLocked, distMeters, screenX, screenY, inView, heading });
+  });
+
+  return (
+    <>
+      <color attach="background" args={['#070d18']} />
+      <ambientLight intensity={0.9} />
+      <directionalLight position={[5, 8, 5]} intensity={2.4} />
+      <directionalLight position={[-5, -2, -3]} intensity={0.8} color="#0284c7" />
+
+      {/* Cyber low-poly wireframe ground grid */}
+      <gridHelper args={[24, 16, '#334155', '#0f172a']} position={[0, -2.4, -4]} />
+
+      {/* Floating Low-Poly Radar Buoys */}
+      <group position={[-5, 1.2, -7]}>
+        <mesh>
+          <octahedronGeometry args={[0.22, 0]} />
+          <meshStandardMaterial color="#475569" flatShading />
+        </mesh>
+      </group>
+      <group position={[5.2, -0.8, -8]}>
+        <mesh>
+          <octahedronGeometry args={[0.25, 0]} />
+          <meshStandardMaterial color="#475569" flatShading />
+        </mesh>
+      </group>
+
+      {/* Low-Poly Target Drone */}
+      <group ref={droneRef} position={[0, 0, -4.5]}>
+        {/* Faceted crystalline hull */}
+        <mesh>
+          <octahedronGeometry args={[0.38, 0]} />
+          <meshStandardMaterial color="#f59e0b" roughness={0.3} metalness={0.8} flatShading />
+        </mesh>
+        {/* Rotating wireframe sensor ring */}
+        <mesh ref={ringRef}>
+          <torusGeometry args={[0.56, 0.024, 6, 24]} />
+          <meshStandardMaterial color="#38bdf8" emissive="#0284c7" emissiveIntensity={0.6} wireframe />
+        </mesh>
+        {/* Emissive core */}
+        <mesh>
+          <sphereGeometry args={[0.15, 12, 12]} />
+          <meshBasicMaterial color="#38bdf8" />
+        </mesh>
+        {/* Dual thruster exhaust dots */}
+        <mesh position={[-0.2, 0, 0.35]}>
+          <sphereGeometry args={[0.04, 8, 8]} />
+          <meshBasicMaterial color="#06b6d4" />
+        </mesh>
+        <mesh position={[0.2, 0, 0.35]}>
+          <sphereGeometry args={[0.04, 8, 8]} />
+          <meshBasicMaterial color="#06b6d4" />
+        </mesh>
+      </group>
+    </>
+  );
+}
+
+function TargetTracker3D({ joystick }: { joystick: JoystickValue }) {
+  const [hud, setHud] = useState({
+    isLocked: false,
+    distMeters: 48,
+    screenX: 50,
+    screenY: 50,
+    inView: true,
+    heading: 0,
+  });
+
+  return (
+    <div className="target-tracker-stage">
+      <Canvas camera={{ position: [0, 0, 0], fov: 52 }}>
+        <TargetShooterScene joystick={joystick} onHUDUpdate={setHud} />
+      </Canvas>
+
+      {/* Tactical Military HUD Overlay */}
+      <div className="target-tracker-hud">
+        <div className="hud-top-tape">
+          <span>SYS.AIM · TURRET-01</span>
+          <span className="tape-heading">HDG {hud.heading.toString().padStart(3, '0')}°</span>
+          <span>FOV 52°</span>
+        </div>
+
+        {/* Center crosshair */}
+        <div className="hud-reticle-center">
+          <svg className="hud-crosshair-svg" viewBox="0 0 100 100">
+            <circle
+              cx="50"
+              cy="50"
+              r="24"
+              fill="none"
+              stroke={hud.isLocked ? '#10b981' : 'rgba(56, 189, 248, 0.45)'}
+              strokeWidth="1.2"
+              strokeDasharray="4 6"
+            />
+            <circle
+              cx="50"
+              cy="50"
+              r="2"
+              fill={hud.isLocked ? '#10b981' : '#38bdf8'}
+            />
+            {/* Mil-dot cross lines */}
+            <line x1="20" y1="50" x2="38" y2="50" stroke={hud.isLocked ? '#10b981' : '#38bdf8'} strokeWidth="1.2" />
+            <line x1="62" y1="50" x2="80" y2="50" stroke={hud.isLocked ? '#10b981' : '#38bdf8'} strokeWidth="1.2" />
+            <line x1="50" y1="20" x2="50" y2="38" stroke={hud.isLocked ? '#10b981' : '#38bdf8'} strokeWidth="1.2" />
+            <line x1="50" y1="62" x2="50" y2="80" stroke={hud.isLocked ? '#10b981' : '#38bdf8'} strokeWidth="1.2" />
+          </svg>
+        </div>
+
+        {/* Dynamic target tracking brackets */}
+        {hud.inView && (
+          <div
+            className={`hud-target-bracket ${hud.isLocked ? 'is-locked' : ''}`}
+            style={{
+              left: `${clamp(hud.screenX, 8, 92)}%`,
+              top: `${clamp(hud.screenY, 12, 88)}%`,
+            }}
+          >
+            <div className="bracket-corner tl" />
+            <div className="bracket-corner tr" />
+            <div className="bracket-corner bl" />
+            <div className="bracket-corner br" />
+            <span className="bracket-label">
+              {hud.isLocked ? `LOCKED · ${hud.distMeters}m` : `SEEK · ${hud.distMeters}m`}
+            </span>
+          </div>
+        )}
+
+        <div className="hud-bottom-tape">
+          <span className={`hud-status-badge ${hud.isLocked ? 'locked' : ''}`}>
+            {hud.isLocked ? '● TRACKING LOCK' : '○ SEARCHING'}
+          </span>
+          <span>AZ {(-joystick.x * 45).toFixed(0)}° / EL {(joystick.y * 30).toFixed(0)}°</span>
+          <span>DRONE-LP</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 07 2D Mode: Tactical CRT Radar Scope. */
+function TactileRadar2D({ joystick }: { joystick: JoystickValue }) {
+  const [target, setTarget] = useState({ x: 32, y: -22 });
+
+  useEffect(() => {
+    let frame = 0;
+    const interval = setInterval(() => {
+      frame += 0.04;
+      setTarget({
+        x: Math.sin(frame * 0.9) * 42,
+        y: Math.cos(frame * 1.2) * 32,
+      });
+    }, 40);
+    return () => clearInterval(interval);
+  }, []);
+
+  const crossX = joystick.x * 45;
+  const crossY = -joystick.y * 45;
+  const dist = Math.hypot(crossX - target.x, crossY - target.y);
+  const isLocked = dist < 14;
+
+  return (
+    <div className="radar-2d-scope">
+      <div className="radar-sweep-beam" />
+      <svg viewBox="0 0 100 100" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+        <circle cx="50" cy="50" r="15" fill="none" stroke="#1e293b" strokeWidth="0.8" />
+        <circle cx="50" cy="50" r="30" fill="none" stroke="#1e293b" strokeWidth="0.8" />
+        <circle cx="50" cy="50" r="45" fill="none" stroke="#1e293b" strokeWidth="0.8" />
+        <line x1="50" y1="0" x2="50" y2="100" stroke="#1e293b" strokeWidth="0.8" />
+        <line x1="0" y1="50" x2="100" y2="50" stroke="#1e293b" strokeWidth="0.8" />
+      </svg>
+      <div
+        className={`radar-target-blip ${isLocked ? 'is-locked' : ''}`}
+        style={{
+          left: `${50 + (target.x / 50) * 40}%`,
+          top: `${50 + (target.y / 50) * 40}%`,
+        }}
+      />
+      <div
+        className={`radar-crosshair ${isLocked ? 'is-locked' : ''}`}
+        style={{
+          left: `${50 + joystick.x * 40}%`,
+          top: `${50 - joystick.y * 40}%`,
+        }}
+      />
+    </div>
+  );
+}
+
+/** 08 3D Stage: Blender Suzanne with Focused Overhead Inspection Spotlight. */
+function SuzanneInspection3D({ light }: { light: number }) {
+  const lit = clamp(light, 0, 1);
+  return (
+    <div className="lab-3d-stage">
+      <Canvas camera={{ position: [0, 0.45, 2.7], fov: 42 }}>
+        <color attach="background" args={['#080d19']} />
+
+        {/* Overhead Industrial Lamp Fixture */}
+        <group position={[0, 2.1, 0]}>
+          <mesh position={[0, 0.45, 0]}>
+            <cylinderGeometry args={[0.016, 0.016, 0.5, 8]} />
+            <meshStandardMaterial color="#0f172a" />
+          </mesh>
+          <mesh position={[0, 0.1, 0]}>
+            <cylinderGeometry args={[0.18, 0.56, 0.38, 32]} />
+            <meshStandardMaterial color="#1e293b" roughness={0.3} metalness={0.8} />
+          </mesh>
+          <mesh position={[0, -0.06, 0]}>
+            <sphereGeometry args={[0.16, 24, 24]} />
+            <meshStandardMaterial
+              emissive="#fef08a"
+              emissiveIntensity={0.5 + lit * 5.0}
+              color="#fef9c3"
+              roughness={0.1}
+            />
+          </mesh>
+        </group>
+
+        {/* Volumetric Light Cone Beam */}
+        <mesh position={[0, 1.05, 0]}>
+          <coneGeometry args={[1.5, 2.1, 32, 1, true]} />
+          <meshBasicMaterial
+            color="#fef08a"
+            transparent
+            opacity={0.02 + lit * 0.18}
+            depthWrite={false}
+            blending={AdditiveBlending}
+            side={DoubleSide}
+          />
+        </mesh>
+
+        {/* Focused Overhead Spotlight Shining Directly onto Suzanne */}
+        <spotLight
+          position={[0, 2.1, 0]}
+          target-position={[0, 0.1, 0]}
+          intensity={20 + lit * 180}
+          angle={0.68}
+          penumbra={0.4}
+          color="#fffbeb"
+        />
+
+        {/* Dynamic Point Light for Specular Highlights on Brow & Snout */}
+        <pointLight
+          position={[
+            Math.cos(lit * Math.PI * 2) * 1.6,
+            1.8,
+            Math.sin(lit * Math.PI * 2) * 1.6,
+          ]}
+          intensity={8 + lit * 75}
+          color="#fde68a"
+          distance={6}
+          decay={2}
+        />
+
+        <ambientLight intensity={0.25 + lit * 0.4} />
+        <directionalLight position={[0, -1, -3]} intensity={0.7} color="#38bdf8" />
+
+        {/* Circular Inspection Pedestal */}
+        <mesh position={[0, -0.68, 0]}>
+          <cylinderGeometry args={[1.4, 1.5, 0.14, 32]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.7} metalness={0.5} />
+        </mesh>
+        {/* Light Bounce Pool on Pedestal */}
+        <mesh position={[0, -0.60, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0, 1.25, 32]} />
+          <meshBasicMaterial
+            color="#fef08a"
+            transparent
+            opacity={0.06 + lit * 0.28}
+            blending={AdditiveBlending}
+          />
+        </mesh>
+
+        {/* Blender's Iconic Suzanne 3D Monkey Mesh */}
+        <Suspense fallback={null}>
+          <SpatialProvider>
+            <SelectableModel
+              src="/models/Suzanne.glb"
+              modelId="suzanne-inspection"
+              fit={1.75}
+              position={[0, 0.08, 0]}
+            />
+          </SpatialProvider>
+        </Suspense>
+
+        <BlenderControls target={[0, 0.2, 0]} minDistance={1.6} maxDistance={6} enableDamping />
       </Canvas>
     </div>
   );
@@ -111,7 +429,7 @@ function PullLever({
   onChange,
   min = 0,
   max = 1,
-  step = 0.01,
+  step = 0.005,
   inverted = false,
   label,
   unitLabel,
@@ -127,12 +445,10 @@ function PullLever({
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const pointerIdRef = useRef<number | null>(null);
+  const trackRectRef = useRef<{ top: number; height: number } | null>(null);
   const [active, setActive] = useState(false);
   const range = max - min;
   const normalized = range > 0 ? clamp((value - min) / range, 0, 1) : 0;
-  // Visual travel from top (0%) to bottom (100%):
-  // If not inverted (e.g. Hydraulic Lift), max is at the top (0%) and min is at the bottom (100%).
-  // If inverted (e.g. Syringe Plunger push-down), min is at the top (0%) and max is at the bottom (100%).
   const topFraction = inverted ? normalized : 1 - normalized;
 
   const setClamped = (next: number) => {
@@ -141,9 +457,8 @@ function PullLever({
   };
 
   const updateFromClientY = (clientY: number) => {
-    const track = trackRef.current;
-    if (!track) return;
-    const rect = track.getBoundingClientRect();
+    const rect = trackRectRef.current;
+    if (!rect) return;
     const pad = 16;
     const usableHeight = Math.max(1, rect.height - pad * 2);
     const ratioFromTop = clamp((clientY - (rect.top + pad)) / usableHeight, 0, 1);
@@ -187,6 +502,8 @@ function PullLever({
       }}
       onPointerDown={(event: PointerEvent<HTMLDivElement>) => {
         pointerIdRef.current = event.pointerId;
+        const b = trackRef.current?.getBoundingClientRect();
+        if (b) trackRectRef.current = { top: b.top, height: b.height };
         event.currentTarget.setPointerCapture(event.pointerId);
         setActive(true);
         updateFromClientY(event.clientY);
@@ -198,11 +515,13 @@ function PullLever({
       onPointerUp={(event: PointerEvent<HTMLDivElement>) => {
         if (pointerIdRef.current !== event.pointerId) return;
         pointerIdRef.current = null;
+        trackRectRef.current = null;
         setActive(false);
         event.currentTarget.releasePointerCapture(event.pointerId);
       }}
       onPointerCancel={() => {
         pointerIdRef.current = null;
+        trackRectRef.current = null;
         setActive(false);
       }}
     >
@@ -214,14 +533,14 @@ function PullLever({
           className="pull-lever-fill"
           style={
             inverted
-              ? { top: 0, height: `${ normalized * 100 }%` }
-              : { bottom: 0, height: `${ normalized * 100 }%` }
+              ? { top: 0, height: `${normalized * 100}%` }
+              : { bottom: 0, height: `${normalized * 100}%` }
           }
         />
       </div>
       <div
         className="pull-lever-carriage"
-        style={{ top: `${ 16 + topFraction * 124 }px` }}
+        style={{ top: `${16 + topFraction * 124}px` }}
       >
         <div className="pull-lever-shaft" />
         <div className="pull-lever-grip">
@@ -268,7 +587,7 @@ function TactileDial({
       {({ progress, angle, active }) => {
         const r = 42;
         const circumference = 2 * Math.PI * r;
-        const arcLength = circumference * 0.75; // 270 deg sweep (-135 to +135)
+        const arcLength = circumference * 0.75;
         const dashOffset = arcLength * (1 - progress);
         return (
           <div className={`tactile-dial-inner ${active ? 'is-active' : ''}`}>
@@ -305,7 +624,6 @@ function TactileDial({
                 transition: active ? 'none' : 'transform .05s ease-out',
               }}
             >
-              {/* Extended lever arm + grip handle sticking out for easy mouse grabbing */}
               <div className="tactile-dial-arm" />
               <div className="tactile-dial-handle" title="Drag around or up/down to rotate">
                 <span />
@@ -319,7 +637,130 @@ function TactileDial({
   );
 }
 
-/** Blender's Suzanne (monkey head) mesh with dynamic top-down specular & diffuse lighting reflections. */
+/** Tactile Physical Flight / Arcade Joystick with machined bezel, cardinal markings, and 3D thumbstick. */
+function TactileJoystick({
+  value,
+  onChange,
+  size = 124,
+  label = 'Flight Gimbal',
+  springToCenter = true,
+}: {
+  value: JoystickValue;
+  onChange: (value: JoystickValue) => void;
+  size?: number;
+  label?: string;
+  springToCenter?: boolean;
+}) {
+  const pointerIdRef = useRef<number | null>(null);
+  const rectRef = useRef<{ left: number; top: number; width: number; height: number } | null>(null);
+  const [active, setActive] = useState(false);
+
+  const thumbSize = Math.round(size * 0.44);
+  const maxTravel = (size - thumbSize) / 2 - 4;
+  const xOffset = value.x * maxTravel;
+  const yOffset = -value.y * maxTravel;
+  const rotX = -value.y * 22;
+  const rotY = value.x * 22;
+  const mag = Math.min(1, Math.hypot(value.x, value.y));
+
+  const updateFromPointer = (clientX: number, clientY: number) => {
+    const rect = rectRef.current;
+    if (!rect) return;
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const radius = maxTravel;
+    let dx = (clientX - centerX) / radius;
+    let dy = -(clientY - centerY) / radius;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 1) {
+      dx /= dist;
+      dy /= dist;
+    }
+    onChange({ x: Number(dx.toFixed(3)), y: Number(dy.toFixed(3)) });
+  };
+
+  return (
+    <div
+      role="application"
+      tabIndex={0}
+      aria-label={`${label}: X ${value.x.toFixed(2)}, Y ${value.y.toFixed(2)}`}
+      className={`tactile-joystick ${active ? 'is-active' : ''}`}
+      style={{ width: size, height: size }}
+      onKeyDown={(event) => {
+        const step = 0.1;
+        const next = { ...value };
+        if (event.key === 'ArrowLeft') next.x -= step;
+        else if (event.key === 'ArrowRight') next.x += step;
+        else if (event.key === 'ArrowUp') next.y += step;
+        else if (event.key === 'ArrowDown') next.y -= step;
+        else if (event.key === 'Home' || event.key === 'Escape') { next.x = 0; next.y = 0; }
+        else return;
+        event.preventDefault();
+        const dist = Math.hypot(next.x, next.y);
+        if (dist > 1) { next.x /= dist; next.y /= dist; }
+        onChange({ x: Number(next.x.toFixed(3)), y: Number(next.y.toFixed(3)) });
+      }}
+      onPointerDown={(event) => {
+        pointerIdRef.current = event.pointerId;
+        const b = event.currentTarget.getBoundingClientRect();
+        rectRef.current = { left: b.left, top: b.top, width: b.width, height: b.height };
+        event.currentTarget.setPointerCapture(event.pointerId);
+        setActive(true);
+        updateFromPointer(event.clientX, event.clientY);
+      }}
+      onPointerMove={(event) => {
+        if (pointerIdRef.current !== event.pointerId) return;
+        updateFromPointer(event.clientX, event.clientY);
+      }}
+      onPointerUp={(event) => {
+        if (pointerIdRef.current !== event.pointerId) return;
+        pointerIdRef.current = null;
+        rectRef.current = null;
+        setActive(false);
+        event.currentTarget.releasePointerCapture(event.pointerId);
+        if (springToCenter) onChange({ x: 0, y: 0 });
+      }}
+      onPointerCancel={() => {
+        pointerIdRef.current = null;
+        rectRef.current = null;
+        setActive(false);
+        if (springToCenter) onChange({ x: 0, y: 0 });
+      }}
+    >
+      <div className="joystick-bezel">
+        <span className="cardinal-tick n">N</span>
+        <span className="cardinal-tick e">E</span>
+        <span className="cardinal-tick s">S</span>
+        <span className="cardinal-tick w">W</span>
+        <div className="joystick-tick-ring" aria-hidden="true" />
+      </div>
+
+      <div className="joystick-gaiter">
+        <div className="gaiter-ring ring-3" />
+        <div className="gaiter-ring ring-2" />
+        <div className="gaiter-ring ring-1" />
+      </div>
+
+      <div
+        className="joystick-thumb"
+        style={{
+          width: thumbSize,
+          height: thumbSize,
+          transform: `translate(-50%, -50%) translate3d(${xOffset}px, ${yOffset}px, 0) perspective(400px) rotateX(${rotX}deg) rotateY(${rotY}deg)`,
+          boxShadow: `${-value.x * 14}px ${value.y * 14 + 6}px 18px rgba(0, 0, 0, 0.65), inset 0 2px 3px rgba(255, 255, 255, 0.28)`,
+        }}
+      >
+        <div className="thumb-grip-rim" />
+        <div className="thumb-cup">
+          <div className="thumb-crosshair" />
+          <div className={`thumb-led ${active || mag > 0.05 ? 'is-lit' : ''}`} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Blender's Suzanne (monkey head) 2D vector mesh with dynamic top-down specular & diffuse lighting reflections. */
 function SuzanneMonkey({ light }: { light: number }) {
   const lit = clamp(light, 0, 1);
   return (
@@ -343,7 +784,6 @@ function SuzanneMonkey({ light }: { light: number }) {
           </linearGradient>
         </defs>
 
-        {/* Ground pedestal shadow & light bounce pool */}
         <ellipse
           cx="80"
           cy="118"
@@ -353,7 +793,6 @@ function SuzanneMonkey({ light }: { light: number }) {
         />
         <ellipse cx="80" cy="118" rx="34" ry="5.5" fill="rgba(2, 6, 23, 0.55)" />
 
-        {/* Left & Right Monkey Ears (faceted low-poly style) */}
         <polygon
           points="14,52 28,36 42,46 40,74 22,78 10,66"
           fill="url(#suzanne-top-light)"
@@ -379,7 +818,6 @@ function SuzanneMonkey({ light }: { light: number }) {
           strokeWidth="0.8"
         />
 
-        {/* Cranium / Main Head Dome */}
         <polygon
           points="52,16 80,10 108,16 124,36 120,78 102,96 58,96 40,78 36,36"
           fill="url(#suzanne-top-light)"
@@ -387,7 +825,6 @@ function SuzanneMonkey({ light }: { light: number }) {
           strokeWidth="1.4"
         />
 
-        {/* Top Cranium Specular Facets (direct reflection right under the bulb) */}
         <polygon
           points="56,18 80,12 104,18 96,32 80,29 64,32"
           fill={`rgba(254, 249, 195, ${0.06 + lit * 0.72})`}
@@ -397,50 +834,42 @@ function SuzanneMonkey({ light }: { light: number }) {
           fill={`rgba(253, 230, 138, ${0.04 + lit * 0.48})`}
         />
 
-        {/* Iconic Suzanne Brow Ridge */}
         <polygon
-          points="38,42 58,34 80,39 102,34 122,42 116,52 80,48 44,52"
+          points="46,38 80,36 114,38 122,50 80,48 38,50"
           fill="url(#suzanne-brow-spec)"
-          stroke={`rgba(254, 240, 138, ${0.25 + lit * 0.7})`}
+          stroke={`rgba(254, 243, 199, ${0.3 + lit * 0.7})`}
+          strokeWidth="1.4"
+        />
+        <polygon
+          points="48,40 80,38 112,40 106,46 80,44 54,46"
+          fill={`rgba(255, 255, 255, ${0.15 + lit * 0.85})`}
+        />
+
+        <ellipse cx="60" cy="56" rx="14" ry="12" fill="#0f172a" stroke="rgba(148, 163, 184, 0.4)" strokeWidth="1" />
+        <ellipse cx="60" cy="56" rx="9" ry="8" fill="rgba(30, 41, 59, 0.95)" />
+        <circle cx="58" cy="54" r="3" fill={`rgba(254, 243, 199, ${0.2 + lit * 0.8})`} />
+
+        <ellipse cx="100" cy="56" rx="14" ry="12" fill="#0f172a" stroke="rgba(148, 163, 184, 0.4)" strokeWidth="1" />
+        <ellipse cx="100" cy="56" rx="9" ry="8" fill="rgba(30, 41, 59, 0.95)" />
+        <circle cx="98" cy="54" r="3" fill={`rgba(254, 243, 199, ${0.2 + lit * 0.8})`} />
+
+        <polygon
+          points="54,64 80,58 106,64 110,88 80,94 50,88"
+          fill="url(#suzanne-muzzle-grad)"
+          stroke={`rgba(254, 243, 199, ${0.2 + lit * 0.6})`}
           strokeWidth="1.2"
         />
-
-        {/* Deep Eye Sockets */}
-        <polygon points="44,50 61,44 74,52 70,69 50,71 41,60" fill="rgba(15, 23, 42, 0.85)" stroke="rgba(148, 163, 184, 0.3)" strokeWidth="0.9" />
-        <polygon points="116,50 99,44 86,52 90,69 110,71 119,60" fill="rgba(15, 23, 42, 0.85)" stroke="rgba(148, 163, 184, 0.3)" strokeWidth="0.9" />
-
-        {/* Eyes with dynamic specular catchlights from the bulb above */}
-        <circle cx="58" cy="57" r="9.5" fill={`rgba(45, 212, 191, ${0.22 + lit * 0.52})`} stroke={`rgba(253, 230, 138, ${0.3 + lit * 0.6})`} strokeWidth="1.1" />
-        <circle cx="58" cy="57" r="4.5" fill="#0f172a" />
-        <circle cx="56" cy="53.5" r={1.4 + lit * 2.2} fill={`rgba(255, 255, 255, ${0.35 + lit * 0.65})`} />
-
-        <circle cx="102" cy="57" r="9.5" fill={`rgba(45, 212, 191, ${0.22 + lit * 0.52})`} stroke={`rgba(253, 230, 138, ${0.3 + lit * 0.6})`} strokeWidth="1.1" />
-        <circle cx="102" cy="57" r="4.5" fill="#0f172a" />
-        <circle cx="100" cy="53.5" r={1.4 + lit * 2.2} fill={`rgba(255, 255, 255, ${0.35 + lit * 0.65})`} />
-
-        {/* Nose Bridge & Nostrils */}
         <polygon
-          points="74,48 86,48 91,72 80,77 69,72"
-          fill="url(#suzanne-brow-spec)"
-          stroke={`rgba(253, 230, 138, ${0.2 + lit * 0.55})`}
-          strokeWidth="1"
+          points="62,66 80,62 98,66 94,76 80,74 66,76"
+          fill={`rgba(254, 249, 195, ${0.08 + lit * 0.65})`}
         />
-        <ellipse cx="76" cy="72" rx="2.2" ry="3.2" fill="#0f172a" />
-        <ellipse cx="84" cy="72" rx="2.2" ry="3.2" fill="#0f172a" />
+        <ellipse cx="73" cy="74" rx="2.5" ry="4" fill="#020617" />
+        <ellipse cx="87" cy="74" rx="2.5" ry="4" fill="#020617" />
 
-        {/* Protruding Monkey Muzzle & Chin */}
-        <polygon
-          points="48,74 68,69 80,74 92,69 112,74 116,92 100,109 80,113 60,109 44,92"
-          fill="url(#suzanne-muzzle-grad)"
-          stroke={`rgba(253, 230, 138, ${0.2 + lit * 0.65})`}
-          strokeWidth="1.3"
-        />
-        {/* Upper Lip Specular Shelf catching overhead light */}
         <polygon
           points="54,75 80,79 106,75 110,86 80,91 50,86"
           fill={`rgba(254, 243, 199, ${0.05 + lit * 0.45})`}
         />
-        {/* Mouth Crease */}
         <polyline
           points="55,93 80,98 105,93"
           fill="none"
@@ -449,7 +878,6 @@ function SuzanneMonkey({ light }: { light: number }) {
           strokeLinecap="round"
         />
 
-        {/* Subtle 3D Low-Poly Wireframe Mesh Overlay Lines */}
         <g stroke={`rgba(254, 249, 195, ${0.08 + lit * 0.32})`} strokeWidth="0.7" fill="none">
           <line x1="80" y1="10" x2="80" y2="48" />
           <line x1="52" y1="16" x2="64" y2="32" />
@@ -471,8 +899,15 @@ const percent = (value: number) => `${Math.round(value * 100)}%`;
 export function ControlsLab({ onBack }: { onBack: () => void }) {
   const [pendulum, setPendulum] = useState(0.5);
   const [lift, setLift] = useState(0.35);
+  const [liftDragging, setLiftDragging] = useState(false);
+  const liftShaftRectRef = useRef<{ top: number; height: number } | null>(null);
+
   const [grip, setGrip] = useState(0.35);
+
   const [plunger, setPlunger] = useState(0.25);
+  const [plungerDragging, setPlungerDragging] = useState(false);
+  const syringeRectRef = useRef<{ top: number; height: number } | null>(null);
+
   const [valve, setValve] = useState(35);
   const [throttle, setThrottle] = useState(0.35);
   const [joystick, setJoystick] = useState<JoystickValue>({ x: 0, y: 0 });
@@ -486,7 +921,6 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
   return (
     <main className="controls-lab">
       <section className="lab-hero">
-        {/* Animated concentric orbital rings & telemetry nodes in the top right */}
         <div className="lab-hero-orbits" aria-hidden="true">
           <div className="orbit-ring ring-1" />
           <div className="orbit-ring ring-2" />
@@ -500,49 +934,72 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
         <button className="lab-back" onClick={onBack}>← Model inspector</button>
         <div className="lab-kicker"><span /> SPATIALKIT CONTROLS LAB · 08 EXPERIMENTS</div>
         <h1>Move something.<br /><em>Understand everything.</em></h1>
-        <p>Each experiment is a real controlled React component. Pull a lever, spin a rotary crank, or use the arrow keys—then copy the exact interaction into training, simulation, product, or 3D software.</p>
-        <div className="lab-legend"><span>DRAG</span><i /><span>ROTATE</span><i /><span>PULL LEVER</span><i /><span>KEYBOARD</span><i /><span>REACT STATE</span></div>
+        <p>Each experiment is a real controlled React component. Pull a lever, spin a rotary crank, or aim the flight stick—then copy the exact interaction into training, simulation, product, or 3D software.</p>
+        <div className="lab-legend"><span>DRAG</span><i /><span>ROTATE</span><i /><span>PULL LEVER</span><i /><span>FLIGHT STICK</span><i /><span>REACT STATE</span></div>
       </section>
 
       <section className="lab-grid" aria-label="Interactive control experiments">
+        {/* 01 Timeline Scrub -> Exploded Pump Assembly */}
         <ControlCard
           index={0}
           number="01"
           title="Timeline scrub"
-          description="Map a normalized value onto any angle, physics rig, or glTF 3D animation."
-          tags={['TIMELINE', active3D['01'] ? '3D GLTF' : 'PHYSICS']}
+          description="Scrub procedural exploded disassembly of the industrial centrifugal pump in real time."
+          tags={['TIMELINE', active3D['01'] ? 'EXPLODED 3D' : 'LINKAGE']}
           toggle3D={{
             active: !!active3D['01'],
             onToggle: () => setActive3D((prev) => ({ ...prev, '01': !prev['01'] })),
           }}
-          code={`const [progress, setProgress] = useState(0.5);\n<TimelineScrubber value={progress} onChange={setProgress} />\n// <SelectableModel src="/models/Fox.glb" animationProgress={progress} />`}
+          code={`const [progress, setProgress] = useState(0.5);\n<TimelineScrubber value={progress} onChange={setProgress} />\n// <SelectableModel src="/models/pump.glb" explode={progress * 1.6} />`}
         >
           {active3D['01'] ? (
-            <Lab3DViewer src="/models/Fox.glb" modelId="fox-anim" animationProgress={pendulum} fit={2.6} cameraPos={[0, 1.2, 3.2]} />
+            <ExplodedPumpViewer progress={pendulum} />
           ) : (
             <div className="pendulum-rig">
               <div className="pendulum-pin" />
               <div className="pendulum-arm" style={{ transform: `rotate(${-50 + pendulum * 100}deg)` }}><b /></div>
             </div>
           )}
-          <div className="lab-control-row"><TimelineScrubber value={pendulum} onChange={setPendulum} label="Animation progress" /><output>{Math.round(pendulum * 100)}%</output></div>
+          <div className="lab-control-row">
+            <TimelineScrubber value={pendulum} onChange={setPendulum} label="Assembly explosion progress" />
+            <output>{Math.round(pendulum * 100)}%</output>
+          </div>
         </ControlCard>
 
-        <ControlCard index={1} number="02" title="Hydraulic lift" description="Pull the physical hydraulic lever up or down to raise and lower the payload platform." tags={['LEVER', 'MACHINE']} code={`<TimelineScrubber orientation="vertical" value={height} onChange={setHeight} />`}>
-          <div className="lift-demo">
+        {/* 02 Hydraulic Lift */}
+        <ControlCard
+          index={1}
+          number="02"
+          title="Hydraulic lift"
+          description="Pull the physical hydraulic lever up or down to raise and lower the payload platform."
+          tags={['LEVER', 'MACHINE']}
+          code={`<TimelineScrubber orientation="vertical" value={height} onChange={setHeight} />`}
+        >
+          <div className={`lift-demo ${liftDragging ? 'is-dragging' : ''}`}>
             <PullLever value={lift} onChange={setLift} label="Hydraulic lift lever" unitLabel="LIFT" />
             <div
-              className="lift-shaft"
+              className={`lift-shaft ${liftDragging ? 'is-dragging' : ''}`}
               title="Drag platform or pull the lever"
               onPointerDown={(event) => {
                 event.currentTarget.setPointerCapture(event.pointerId);
-                const rect = event.currentTarget.getBoundingClientRect();
-                setLift(clamp(1 - (event.clientY - rect.top) / rect.height, 0, 1));
+                const b = event.currentTarget.getBoundingClientRect();
+                liftShaftRectRef.current = { top: b.top, height: b.height };
+                setLiftDragging(true);
+                setLift(clamp(1 - (event.clientY - b.top - 12) / (b.height - 24), 0, 1));
               }}
               onPointerMove={(event) => {
-                if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-                const rect = event.currentTarget.getBoundingClientRect();
-                setLift(clamp(1 - (event.clientY - rect.top) / rect.height, 0, 1));
+                if (!liftShaftRectRef.current) return;
+                const rect = liftShaftRectRef.current;
+                setLift(clamp(1 - (event.clientY - rect.top - 12) / (rect.height - 24), 0, 1));
+              }}
+              onPointerUp={(event) => {
+                liftShaftRectRef.current = null;
+                setLiftDragging(false);
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }}
+              onPointerCancel={() => {
+                liftShaftRectRef.current = null;
+                setLiftDragging(false);
               }}
             >
               <div className="lift-platform" style={{ bottom: `${16 + lift * 105}px` }}><span>PAYLOAD</span></div>
@@ -552,7 +1009,15 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
           </div>
         </ControlCard>
 
-        <ControlCard index={2} number="03" title="Robotic gripper" description="Close the articulated surgical jaws onto the specimen vial—drag the jaws directly or scrub the actuator." tags={['LINKED', 'SURGICAL']} code={`const gap = 12 + grip * 58;\n<TimelineScrubber value={grip} onChange={setGrip} />`}>
+        {/* 03 Robotic Gripper */}
+        <ControlCard
+          index={2}
+          number="03"
+          title="Robotic gripper"
+          description="Close the articulated surgical jaws onto the specimen vial—drag the jaws directly or scrub the actuator."
+          tags={['LINKED', 'SURGICAL']}
+          code={`const gap = 12 + grip * 58;\n<TimelineScrubber value={grip} onChange={setGrip} />`}
+        >
           <div className={`gripper-demo ${grip <= 0.22 ? 'is-clamped' : ''}`}>
             <div
               className="gripper-stage-rig"
@@ -576,7 +1041,6 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
               </div>
               <div className="gripper-rail">
                 <div className="gripper-leadscrew" />
-                {/* Left articulated surgical jaw */}
                 <div
                   className="gripper-jaw left"
                   style={{ transform: `translateX(${-6 - grip * 42}px) rotate(${(0.2 - grip) * 8}deg)` }}
@@ -584,7 +1048,6 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
                   <span className="jaw-knuckle" />
                   <span className="jaw-pad" />
                 </div>
-                {/* Right articulated surgical jaw */}
                 <div
                   className="gripper-jaw right"
                   style={{ transform: `translateX(${6 + grip * 42}px) rotate(${-(0.2 - grip) * 8}deg)` }}
@@ -592,10 +1055,8 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
                   <span className="jaw-knuckle" />
                   <span className="jaw-pad" />
                 </div>
-                {/* Center rotating servo pinion */}
                 <b style={{ transform: `rotate(${grip * 220}deg)` }}><span /></b>
               </div>
-              {/* Specimen capsule suspended between the jaws */}
               <div
                 className="gripper-specimen"
                 style={{
@@ -607,37 +1068,58 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
                 <span className="specimen-label">BIO-03</span>
               </div>
             </div>
-            <div className="lab-control-row"><TimelineScrubber value={grip} onChange={setGrip} label="Gripper opening" /><output>{Math.round(12 + grip * 58)} mm</output></div>
+            <div className="lab-control-row">
+              <TimelineScrubber value={grip} onChange={setGrip} label="Gripper opening" />
+              <output>{Math.round(12 + grip * 58)} mm</output>
+            </div>
           </div>
         </ControlCard>
 
-        <ControlCard index={3} number="04" title="Medical plunger" description="Pull or push the dosing lever—or grab the syringe plunger handle directly—to control fluid volume." tags={['LEVER', 'MEDICAL']} code={`useMediaTimeline(videoRef, depth, { input: [0, 6], time: [49, 50.4] });\n<TimelineScrubber min={0} max={6} value={depth} onChange={setDepth} />`}>
-          <div className="syringe-demo">
+        {/* 04 Medical Plunger */}
+        <ControlCard
+          index={3}
+          number="04"
+          title="Medical plunger"
+          description="Pull or push the dosing lever—or grab the syringe plunger handle directly—to control fluid volume."
+          tags={['LEVER', 'MEDICAL']}
+          code={`useMediaTimeline(videoRef, depth, { input: [0, 6], time: [49, 50.4] });\n<TimelineScrubber min={0} max={6} value={depth} onChange={setDepth} />`}
+        >
+          <div className={`syringe-demo ${plungerDragging ? 'is-dragging' : ''}`}>
             <PullLever
               inverted
               min={0}
               max={6}
-              step={0.1}
+              step={0.01}
               value={plunger * 6}
               onChange={(val) => setPlunger(val / 6)}
               label="Plunger lever depth"
               unitLabel="DOSE"
             />
             <div
-              className="syringe-assembly"
+              className={`syringe-assembly ${plungerDragging ? 'is-dragging' : ''}`}
               title="Drag syringe plunger or use the dosing lever"
               onPointerDown={(event) => {
                 event.currentTarget.setPointerCapture(event.pointerId);
-                const rect = event.currentTarget.getBoundingClientRect();
-                setPlunger(clamp((event.clientY - rect.top - 18) / (rect.height - 54), 0, 1));
+                const b = event.currentTarget.getBoundingClientRect();
+                syringeRectRef.current = { top: b.top, height: b.height };
+                setPlungerDragging(true);
+                setPlunger(clamp((event.clientY - b.top - 18) / (b.height - 54), 0, 1));
               }}
               onPointerMove={(event) => {
-                if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-                const rect = event.currentTarget.getBoundingClientRect();
+                if (!syringeRectRef.current) return;
+                const rect = syringeRectRef.current;
                 setPlunger(clamp((event.clientY - rect.top - 18) / (rect.height - 54), 0, 1));
               }}
+              onPointerUp={(event) => {
+                syringeRectRef.current = null;
+                setPlungerDragging(false);
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }}
+              onPointerCancel={() => {
+                syringeRectRef.current = null;
+                setPlungerDragging(false);
+              }}
             >
-              {/* Protruding top T-handle and piston rod so the user can see & pull the plunger */}
               <div className="syringe-rod-assembly" style={{ transform: `translateY(${plunger * 78}px)` }}>
                 <div className="syringe-thumb-cap" />
                 <div className="syringe-rod" />
@@ -649,14 +1131,22 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
               </div>
               <div className="syringe-nozzle" />
             </div>
-            <output>{(plunger * 6).toFixed(1)} ml</output>
+            <output>{(plunger * 6).toFixed(1)} <small>ML</small></output>
           </div>
         </ControlCard>
 
-        <ControlCard index={4} number="05" title="Valve dial" description="Grab the rotary crank handle and drag around the dial, scroll your mouse wheel, or click a pressure preset." tags={['DIAL', 'PRESSURE']} code={`<DialControl min={0} max={100} value={pressure} onChange={setPressure} label="Pressure valve" />`}>
+        {/* 05 Pressure Valve */}
+        <ControlCard
+          index={4}
+          number="05"
+          title="Pressure valve"
+          description="Turn the tactile rotary valve crank to dial precise system pressure, or pick a preset."
+          tags={['DIAL', 'CALIBRATION']}
+          code={`<DialControl min={0} max={100} step={1} value={psi} onChange={setPsi} />`}
+        >
           <div className="dial-demo">
-            <div className="dial-scale">
-              {[0, 25, 50, 75, 100].map((preset) => (
+            <div className="dial-presets" role="group" aria-label="Pressure presets">
+              {[15, 35, 60, 85].map((preset) => (
                 <button
                   key={preset}
                   type="button"
@@ -681,9 +1171,25 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
           </div>
         </ControlCard>
 
-        <ControlCard index={5} number="06" title="Turbine throttle" description="Swing the throttle dial handle or scroll to continuously accelerate the turbine rotor." tags={['DIAL', 'VELOCITY']} code={`<DialControl value={speed} onChange={setSpeed} />\n// animationDuration = 1.8 - speed * 1.65`}>
+        {/* 06 Turbine Throttle */}
+        <ControlCard
+          index={5}
+          number="06"
+          title="Turbine throttle"
+          description="Swing the throttle dial handle or scroll to continuously accelerate the turbine rotor."
+          tags={['DIAL', 'VELOCITY']}
+          code={`<DialControl value={speed} onChange={setSpeed} />\n// animationDuration = 1.8 - speed * 1.65`}
+        >
           <div className="turbine-demo">
-            <div className="turbine" style={{ animationDuration: `${1.8 - throttle * 1.65}s`, animationPlayState: throttle < 0.02 ? 'paused' : 'running' }}><i /><i /><i /><i /><b /></div>
+            <div
+              className="turbine"
+              style={{
+                animationDuration: `${1.8 - throttle * 1.65}s`,
+                animationPlayState: throttle < 0.02 ? 'paused' : 'running',
+              }}
+            >
+              <i /><i /><i /><i /><b />
+            </div>
             <div className="turbine-control-col">
               <TactileDial
                 size={84}
@@ -698,40 +1204,52 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
           </div>
         </ControlCard>
 
+        {/* 07 Flight Joystick & Low-Poly POV Shooter Target Tracker */}
         <ControlCard
           index={6}
           number="07"
-          title="Robot joystick"
-          description="A bounded two-axis control drives mobile robots, rovers, cameras, and tools in 2D or 3D."
-          tags={['2-AXIS', active3D['07'] ? '3D ROVER' : 'ROBOTICS']}
+          title="Flight gimbal joystick"
+          description="Aim the targeting turret with the physical flight stick to track and lock onto the moving low-poly target drone."
+          tags={['FLIGHT STICK', active3D['07'] ? 'POV SHOOTER' : 'RADAR']}
           toggle3D={{
             active: !!active3D['07'],
             onToggle: () => setActive3D((prev) => ({ ...prev, '07': !prev['07'] })),
           }}
-          code={`const [pos, setPos] = useState({ x: 0, y: 0 });\n<JoystickControl value={pos} onChange={setPos} />\n// <group position={[pos.x, 0, -pos.y]} rotation={[-pos.y * 0.35, pos.x * 0.75, 0]}><SelectableModel src="/models/CesiumMilkTruck.glb" /></group>`}
+          code={`const [aim, setAim] = useState({ x: 0, y: 0 });\n<TactileJoystick value={aim} onChange={setAim} />\n// Camera yaw = -aim.x * 45°, pitch = aim.y * 30° -> Lock-on target`}
         >
           {active3D['07'] ? (
-            <Lab3DViewer src="/models/CesiumMilkTruck.glb" modelId="truck-rover" joystick={joystick} fit={2.5} cameraPos={[0, 1.8, 3.6]} />
+            <TargetTracker3D joystick={joystick} />
           ) : (
             <div className="joystick-demo">
-              <div className="robot-field"><span className="field-axis x" /><span className="field-axis y" /><div className="robot-puck" style={{ left: `${50 + joystick.x * 38}%`, top: `${50 - joystick.y * 38}%` }}>◆</div></div>
+              <TactileRadar2D joystick={joystick} />
+              <TactileJoystick size={124} value={joystick} onChange={setJoystick} label="Targeting Gimbal" />
             </div>
           )}
-          <JoystickControl className="lab-joystick" size={116} value={joystick} onChange={setJoystick} label="Robot position" />
-          <output>X {joystick.x.toFixed(2)} · Y {joystick.y.toFixed(2)}</output>
+
+          {active3D['07'] && (
+            <div className="tactile-joystick-wrap">
+              <TactileJoystick size={124} value={joystick} onChange={setJoystick} label="Targeting Gimbal" />
+              <div className="joystick-telemetry-bar">
+                <span>AZ: <b>{(-joystick.x * 45).toFixed(0)}°</b></span>
+                <span>EL: <b>{(joystick.y * 30).toFixed(0)}°</b></span>
+                <span>DEFLECTION: <b>{(Math.hypot(joystick.x, joystick.y) * 100).toFixed(0)}%</b></span>
+              </div>
+            </div>
+          )}
         </ControlCard>
 
+        {/* 08 Inspection Light -> Blender's Suzanne */}
         <ControlCard
           index={7}
           number="08"
           title="Inspection light"
-          description="Rotate the dimmer crank to cast real-time lighting across PBR materials or Blender's Suzanne."
-          tags={['MATERIAL', active3D['08'] ? '3D PBR HELMET' : 'LIGHT']}
+          description="Rotate the dimmer crank to cast real-time focused lighting across Blender's iconic Suzanne monkey mesh."
+          tags={['LIGHTING', active3D['08'] ? '3D SUZANNE' : '2D SPECULAR']}
           toggle3D={{
             active: !!active3D['08'],
             onToggle: () => setActive3D((prev) => ({ ...prev, '08': !prev['08'] })),
           }}
-          code={`<DialControl value={intensity} onChange={setIntensity} />\n// <pointLight intensity={intensity * 14} /><SelectableModel src="/models/DamagedHelmet.glb" />`}
+          code={`<DialControl value={intensity} onChange={setIntensity} />\n// <spotLight intensity={20 + intensity * 180} /><SelectableModel src="/models/Suzanne.glb" />`}
         >
           <div className="light-demo" style={{ '--light-level': light } as CSSProperties}>
             <div className="light-control-dock">
@@ -746,7 +1264,7 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
             </div>
 
             {active3D['08'] ? (
-              <Lab3DViewer src="/models/DamagedHelmet.glb" modelId="damaged-helmet" lightIntensity={light} fit={2.2} cameraPos={[0, 0.4, 2.9]} />
+              <SuzanneInspection3D light={light} />
             ) : (
               <div className="light-rig-column">
                 <div className="lamp-overhead">
