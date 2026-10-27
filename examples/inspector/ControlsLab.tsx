@@ -237,16 +237,28 @@ export function HorizontalMechanicalLever({
   );
 }
 
-/** 07 3D Stage: Target Drone with Orbitable 3D Space & Tactical Gimbal Aim. */
+/** 07 3D Stage: Fighter-Jet Camera Turret & Moving Low-Poly Target Drone. */
 function TargetShooterScene({
-  onTargetPosUpdate,
+  joystick,
+  onHUDUpdate,
 }: {
-  onTargetPosUpdate: (info: { screenX: number; screenY: number; distMeters: number; inView: boolean }) => void;
+  joystick: JoystickValue;
+  onHUDUpdate: (info: {
+    isLocked: boolean;
+    distMeters: number;
+    screenX: number;
+    screenY: number;
+    inView: boolean;
+    heading: number;
+    pitch: number;
+  }) => void;
 }) {
   const { camera } = useThree();
   const droneRef = useRef<Group>(null);
   const ringRef = useRef<Mesh>(null);
   const tempVec = useRef(new Vector3());
+  const aimForward = useRef(new Vector3());
+  const targetDir = useRef(new Vector3());
 
   useFrame((state) => {
     const t = state.clock.getElapsedTime();
@@ -264,14 +276,30 @@ function TargetShooterScene({
       ringRef.current.rotation.z -= 0.04;
     }
 
+    // Camera acts as the seeker turret: rotation steered directly by joystick!
+    const targetYaw = -joystick.x * 0.82;
+    const targetPitch = joystick.y * 0.54;
+    const targetRoll = -joystick.x * 0.08;
+    camera.rotation.y += (targetYaw - camera.rotation.y) * 0.22;
+    camera.rotation.x += (targetPitch - camera.rotation.x) * 0.22;
+    camera.rotation.z += (targetRoll - camera.rotation.z) * 0.22;
+
+    // Missile lock-on angular check: angle between camera forward and target direction
+    camera.getWorldDirection(aimForward.current);
+    targetDir.current.copy(droneRef.current.position).sub(camera.position).normalize();
+    const angle = aimForward.current.angleTo(targetDir.current);
+    const isLocked = angle < 0.20; // Within ~11.5° cone of center crosshairs
+
     // Screen-space projection of target drone
     tempVec.current.copy(droneRef.current.position).project(camera);
     const inView = tempVec.current.z < 1;
     const screenX = (tempVec.current.x * 0.5 + 0.5) * 100;
     const screenY = (-tempVec.current.y * 0.5 + 0.5) * 100;
     const distMeters = Math.round(camera.position.distanceTo(droneRef.current.position) * 16);
+    const heading = Math.round(((camera.rotation.y * (180 / Math.PI) * -1) % 360 + 360) % 360);
+    const pitch = Math.round(camera.rotation.x * (180 / Math.PI));
 
-    onTargetPosUpdate({ screenX, screenY, distMeters, inView });
+    onHUDUpdate({ isLocked, distMeters, screenX, screenY, inView, heading, pitch });
   });
 
   return (
@@ -321,95 +349,90 @@ function TargetShooterScene({
           <meshBasicMaterial color="#06b6d4" />
         </mesh>
       </group>
-
-      <BlenderControls target={[0, 0, -4.5]} minDistance={2} maxDistance={10} enableDamping />
     </>
   );
 }
 
 function TargetTracker3D({ joystick }: { joystick: JoystickValue }) {
-  const [targetInfo, setTargetInfo] = useState({
+  const [hud, setHud] = useState({
+    isLocked: false,
+    distMeters: 48,
     screenX: 50,
     screenY: 50,
-    distMeters: 48,
     inView: true,
+    heading: 0,
+    pitch: 0,
   });
-
-  // Aim crosshair moves smoothly across the screen driven by joystick coordinates
-  const aimX = 50 + joystick.x * 40;
-  const aimY = 50 - joystick.y * 36;
-
-  // Lock-on calculation: is aim directly over the target drone?
-  const aimDist = Math.hypot(aimX - targetInfo.screenX, aimY - targetInfo.screenY);
-  const isLocked = aimDist < 8.5;
 
   return (
     <div className="target-tracker-stage">
-      <Canvas camera={{ position: [0, 0.5, 0.5], fov: 55 }}>
-        <TargetShooterScene onTargetPosUpdate={setTargetInfo} />
+      <Canvas camera={{ position: [0, 0, 0], fov: 52 }}>
+        <TargetShooterScene joystick={joystick} onHUDUpdate={setHud} />
       </Canvas>
 
       {/* Tactical Military HUD Overlay */}
       <div className="target-tracker-hud">
         <div className="hud-top-tape">
           <span>SYS.AIM · TURRET-01</span>
-          <span className="tape-heading">FIXED SCENE POV</span>
+          <span className="tape-heading">HDG {hud.heading.toString().padStart(3, '0')}° · PITCH {hud.pitch >= 0 ? `+${hud.pitch}` : hud.pitch}°</span>
           <span>FOV 52°</span>
         </div>
 
-        {/* Crosshair moves smoothly across the scene with the joystick */}
-        <div
-          className="hud-reticle-movable"
-          style={{
-            left: `${clamp(aimX, 6, 94)}%`,
-            top: `${clamp(aimY, 8, 92)}%`,
-          }}
-        >
+        {/* Center optical crosshair fixed to camera forward bore-sight */}
+        <div className="hud-reticle-center" style={{ left: '50%', top: '50%' }}>
           <svg className="hud-crosshair-svg" viewBox="0 0 100 100">
             <circle
               cx="50"
               cy="50"
               r="24"
               fill="none"
-              stroke={isLocked ? '#10b981' : 'rgba(56, 189, 248, 0.55)'}
+              stroke={hud.isLocked ? '#10b981' : '#f59e0b'}
               strokeWidth="1.4"
-              strokeDasharray="4 6"
+              strokeDasharray={hud.isLocked ? undefined : '4 6'}
             />
             <circle
               cx="50"
               cy="50"
               r="2.5"
-              fill={isLocked ? '#10b981' : '#38bdf8'}
+              fill={hud.isLocked ? '#10b981' : '#f59e0b'}
             />
-            <line x1="20" y1="50" x2="38" y2="50" stroke={isLocked ? '#10b981' : '#38bdf8'} strokeWidth="1.4" />
-            <line x1="62" y1="50" x2="80" y2="50" stroke={isLocked ? '#10b981' : '#38bdf8'} strokeWidth="1.4" />
-            <line x1="50" y1="20" x2="50" y2="38" stroke={isLocked ? '#10b981' : '#38bdf8'} strokeWidth="1.4" />
-            <line x1="50" y1="62" x2="50" y2="80" stroke={isLocked ? '#10b981' : '#38bdf8'} strokeWidth="1.4" />
+            <line x1="20" y1="50" x2="38" y2="50" stroke={hud.isLocked ? '#10b981' : '#f59e0b'} strokeWidth="1.4" />
+            <line x1="62" y1="50" x2="80" y2="50" stroke={hud.isLocked ? '#10b981' : '#f59e0b'} strokeWidth="1.4" />
+            <line x1="50" y1="20" x2="50" y2="38" stroke={hud.isLocked ? '#10b981' : '#f59e0b'} strokeWidth="1.4" />
+            <line x1="50" y1="62" x2="50" y2="80" stroke={hud.isLocked ? '#10b981' : '#f59e0b'} strokeWidth="1.4" />
           </svg>
         </div>
 
-        {/* Dynamic target tracking brackets tracking the target drone */}
-        {targetInfo.inView && (
+        {/* Dynamic target tracking brackets tracking the target drone: ORANGE -> GREEN */}
+        {hud.inView && (
           <div
-            className={`hud-target-bracket ${isLocked ? 'is-locked' : ''}`}
+            className={`hud-target-bracket ${hud.isLocked ? 'is-locked' : ''}`}
             style={{
-              left: `${clamp(targetInfo.screenX, 8, 92)}%`,
-              top: `${clamp(targetInfo.screenY, 12, 88)}%`,
+              left: `${clamp(hud.screenX, 8, 92)}%`,
+              top: `${clamp(hud.screenY, 12, 88)}%`,
+              borderColor: hud.isLocked ? '#10b981' : '#f59e0b',
             }}
           >
-            <div className="bracket-corner tl" />
-            <div className="bracket-corner tr" />
-            <div className="bracket-corner bl" />
-            <div className="bracket-corner br" />
-            <span className="bracket-label">
-              {isLocked ? `LOCKED · ${targetInfo.distMeters}m` : `SEEK · ${targetInfo.distMeters}m`}
+            <div className="bracket-corner tl" style={{ borderColor: hud.isLocked ? '#10b981' : '#f59e0b' }} />
+            <div className="bracket-corner tr" style={{ borderColor: hud.isLocked ? '#10b981' : '#f59e0b' }} />
+            <div className="bracket-corner bl" style={{ borderColor: hud.isLocked ? '#10b981' : '#f59e0b' }} />
+            <div className="bracket-corner br" style={{ borderColor: hud.isLocked ? '#10b981' : '#f59e0b' }} />
+            <span
+              className="bracket-label"
+              style={{
+                borderColor: hud.isLocked ? '#10b981' : '#f59e0b',
+                color: hud.isLocked ? '#10b981' : '#f59e0b',
+                background: hud.isLocked ? 'rgba(6, 78, 59, 0.9)' : 'rgba(15, 23, 42, 0.85)',
+              }}
+            >
+              {hud.isLocked ? `● LOCKED · ${hud.distMeters}m` : `○ ACQUIRING · ${hud.distMeters}m`}
             </span>
           </div>
         )}
 
         <div className="hud-bottom-tape">
-          <span className={`hud-status-badge ${isLocked ? 'locked' : ''}`}>
-            {isLocked ? '● TRACKING LOCK' : '○ SEEKING TARGET'}
+          <span className={`hud-status-badge ${hud.isLocked ? 'locked' : ''}`}>
+            {hud.isLocked ? '● MISSILE LOCK READY' : '○ ACQUIRING TARGET'}
           </span>
           <span>AIM X: {joystick.x.toFixed(2)} · Y: {joystick.y.toFixed(2)}</span>
           <span>DRONE-LP</span>
@@ -1385,18 +1408,18 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
           </div>
         </ControlCard>
 
-        {/* 07 Flight Joystick & Low-Poly POV Shooter Target Tracker (Fixed Camera, Only Aim Moves) */}
+        {/* 07 Flight Joystick & Low-Poly POV Shooter Target Tracker (Camera Turret Seeker) */}
         <ControlCard
           index={6}
           number="07"
           title="Flight gimbal joystick"
-          description="Aim the crosshair with the flight stick to track and lock onto the moving low-poly target drone—the scene stays completely steady."
-          tags={['FLIGHT STICK', active3D['07'] ? 'POV AIM' : 'RADAR']}
+          description="Aim the camera turret with the flight stick to track and missile-lock onto the moving low-poly target drone—the camera acts as the fighter-jet seeker."
+          tags={['FLIGHT STICK', active3D['07'] ? 'CAMERA TURRET' : 'RADAR']}
           toggle3D={{
             active: !!active3D['07'],
             onToggle: () => setActive3D((prev) => ({ ...prev, '07': !prev['07'] })),
           }}
-          code={`const [aim, setAim] = useState({ x: 0, y: 0 });\n<TactileJoystick value={aim} onChange={setAim} />\n// Aim moves on screen, camera stays fixed -> Lock-on target`}
+          code={`const [aim, setAim] = useState({ x: 0, y: 0 });\n<TactileJoystick value={aim} onChange={setAim} />\n// Camera yaw = -aim.x * 47°, pitch = aim.y * 31° -> Missile lock-on`}
         >
           {active3D['07'] ? (
             <TargetTracker3D joystick={joystick} />

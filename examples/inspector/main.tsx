@@ -39,6 +39,7 @@ import {
 import {
   Playground,
   ResponsiveCameraFraming,
+  GimbalCameraTurret,
   IconSpotlight,
   IconGimbal,
   IconLift,
@@ -553,6 +554,17 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
   const [activeModelControl, setActiveModelControl] = useState<ActiveModelControl>('none');
   const [lightDial, setLightDial] = useState(0.72);
   const [targetAim, setTargetAim] = useState<JoystickValue>({ x: 0, y: 0 });
+  const ballPositionRef = useRef(new Vector3(0, 2, 0));
+  const [gimbalHUD, setGimbalHUD] = useState({
+    isLocked: false,
+    screenX: 50,
+    screenY: 50,
+    distMeters: 8.5,
+    inFrustum: true,
+    angleDeg: 0,
+    heading: 0,
+    pitch: 0,
+  });
   const [liftHeight, setLiftHeight] = useState(0.35);
 
   // Studio Mode Custom Backdrop Color
@@ -1155,6 +1167,7 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                     activeControl={activeModelControl}
                     lightDial={lightDial}
                     liftHeight={liftHeight}
+                    ballPositionRef={ballPositionRef}
                   >
                     {model.object
                       ? <SelectableObject object={model.object} animations={model.animations} animationProgress={model.hasAnimations ? animationProgress : undefined} explode={proceduralExplode} clippingPlanes={clippingPlanes} modelId={model.id} fit={MODEL_FIT} onSurfaceClick={handleSurfaceClick} />
@@ -1205,12 +1218,23 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
             <BlenderControls
               ref={controls}
               makeDefault
+              enabled={activeModelControl !== 'target'}
               target={[0, 1, 0]}
               minDistance={2}
               maxDistance={24}
               enableDamping
             />
-            <ResponsiveCameraFraming controlsRef={controls} basePosition={[4.8, 2.6, 5.0]} target={[0, 1.15, 0]} />
+            {activeModelControl !== 'target' && (
+              <ResponsiveCameraFraming controlsRef={controls} basePosition={[4.8, 2.6, 5.0]} target={[0, 1.15, 0]} />
+            )}
+            {activeModelControl === 'target' && (
+              <GimbalCameraTurret
+                active={activeModelControl === 'target'}
+                aim={targetAim}
+                ballPosRef={ballPositionRef}
+                onHUDUpdate={setGimbalHUD}
+              />
+            )}
             <ViewportDirector
               turntable={turntable}
               focusRequest={focusRequest}
@@ -1419,68 +1443,105 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
             </div>
           )}
 
-          {/* ─── Tactical Gimbal HUD Overlay (Card 07 Style) ─── */}
+          {/* ─── Tactical Gimbal HUD Overlay (Fighter-Jet Camera Turret & Lock-On) ─── */}
           {activeModelControl === 'target' && (
             <div className="target-hud-overlay" aria-hidden="true">
               <div className="hud-top-tape">
-                <span className="tape-heading">✦ GIMBAL LOCK-ON SYSTEM</span>
-                <span>AIM: [{(targetAim.x * 100).toFixed(0)}, {(targetAim.y * 100).toFixed(0)}]</span>
-                <span className={`hud-status-badge ${Math.hypot(targetAim.x, targetAim.y) < 0.22 ? 'locked' : ''}`}>
-                  {Math.hypot(targetAim.x, targetAim.y) < 0.22 ? '● TARGET LOCKED' : '○ ACQUIRING'}
+                <span className="tape-heading">✦ GIMBAL CAMERA TRACKER</span>
+                <span>HDG {gimbalHUD.heading.toString().padStart(3, '0')}° · PITCH {gimbalHUD.pitch >= 0 ? `+${gimbalHUD.pitch}` : gimbalHUD.pitch}°</span>
+                <span className={`hud-status-badge ${gimbalHUD.isLocked ? 'locked' : ''}`}>
+                  {gimbalHUD.isLocked ? '● TARGET LOCKED' : '○ ACQUIRING TARGET'}
                 </span>
               </div>
 
-              {/* Center Target Bracket on model */}
+              {/* Real-time tracking bracket following the moving 3D model: ORANGE -> GREEN */}
+              {gimbalHUD.inFrustum && (
+                <div
+                  className={`hud-target-bracket ${gimbalHUD.isLocked ? 'is-locked' : ''}`}
+                  style={{
+                    position: 'absolute',
+                    left: `${gimbalHUD.screenX}%`,
+                    top: `${gimbalHUD.screenY}%`,
+                    transform: 'translate(-50%, -50%)',
+                    width: 130,
+                    height: 130,
+                    pointerEvents: 'none',
+                    border: `2px ${gimbalHUD.isLocked ? 'solid #10b981' : 'dashed #f59e0b'}`,
+                    borderRadius: 8,
+                    boxShadow: gimbalHUD.isLocked ? '0 0 18px rgba(16, 185, 129, 0.45)' : undefined,
+                    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+                  }}
+                >
+                  <span
+                    className="bracket-label"
+                    style={{
+                      borderColor: gimbalHUD.isLocked ? '#10b981' : '#f59e0b',
+                      color: gimbalHUD.isLocked ? '#10b981' : '#f59e0b',
+                      background: gimbalHUD.isLocked ? 'rgba(6, 78, 59, 0.92)' : 'rgba(15, 23, 42, 0.88)',
+                    }}
+                  >
+                    {gimbalHUD.isLocked
+                      ? `● TARGET LOCKED · ${gimbalHUD.distMeters}m [MISSILE LOCK]`
+                      : `○ ACQUIRING TARGET · ${gimbalHUD.distMeters}m (${gimbalHUD.angleDeg.toFixed(1)}° OFF)`}
+                  </span>
+                  <div className="bracket-corner tl" style={{ borderColor: gimbalHUD.isLocked ? '#10b981' : '#f59e0b' }} />
+                  <div className="bracket-corner tr" style={{ borderColor: gimbalHUD.isLocked ? '#10b981' : '#f59e0b' }} />
+                  <div className="bracket-corner bl" style={{ borderColor: gimbalHUD.isLocked ? '#10b981' : '#f59e0b' }} />
+                  <div className="bracket-corner br" style={{ borderColor: gimbalHUD.isLocked ? '#10b981' : '#f59e0b' }} />
+                </div>
+              )}
+
+              {/* Optical crosshair fixed to camera center bore-sight: ORANGE -> GREEN */}
               <div
-                className={`hud-target-bracket ${Math.hypot(targetAim.x, targetAim.y) < 0.22 ? 'is-locked' : ''}`}
+                className="hud-reticle-center"
                 style={{
                   position: 'absolute',
                   left: '50%',
                   top: '50%',
                   transform: 'translate(-50%, -50%)',
-                  width: 140,
-                  height: 140,
-                  pointerEvents: 'none',
-                  border: `1.5px dashed ${Math.hypot(targetAim.x, targetAim.y) < 0.22 ? '#10b981' : '#f59e0b'}`,
-                  borderRadius: 8,
-                }}
-              >
-                <span className="bracket-label">
-                  {Math.hypot(targetAim.x, targetAim.y) < 0.22 ? 'ASSEMBLY TARGET [LOCKED]' : 'ASSEMBLY TARGET'}
-                </span>
-                <div className="bracket-corner tl" />
-                <div className="bracket-corner tr" />
-                <div className="bracket-corner bl" />
-                <div className="bracket-corner br" />
-              </div>
-
-              {/* Movable Reticle Crosshair */}
-              <div
-                className="hud-reticle-movable"
-                style={{
-                  position: 'absolute',
-                  left: `${50 + targetAim.x * 35}%`,
-                  top: `${50 - targetAim.y * 35}%`,
-                  transform: 'translate(-50%, -50%)',
-                  width: 80,
-                  height: 80,
+                  width: 90,
+                  height: 90,
                   pointerEvents: 'none',
                 }}
               >
-                <svg className="hud-crosshair-svg" viewBox="0 0 80 80">
-                  <circle cx="40" cy="40" r="28" fill="none" stroke={Math.hypot(targetAim.x, targetAim.y) < 0.22 ? '#10b981' : '#38bdf8'} strokeWidth="1.5" strokeDasharray="6 4" />
-                  <circle cx="40" cy="40" r="4" fill={Math.hypot(targetAim.x, targetAim.y) < 0.22 ? '#10b981' : '#38bdf8'} />
-                  <line x1="40" y1="4" x2="40" y2="20" stroke={Math.hypot(targetAim.x, targetAim.y) < 0.22 ? '#10b981' : '#38bdf8'} strokeWidth="1.5" />
-                  <line x1="40" y1="60" x2="40" y2="76" stroke={Math.hypot(targetAim.x, targetAim.y) < 0.22 ? '#10b981' : '#38bdf8'} strokeWidth="1.5" />
-                  <line x1="4" y1="40" x2="20" y2="40" stroke={Math.hypot(targetAim.x, targetAim.y) < 0.22 ? '#10b981' : '#38bdf8'} strokeWidth="1.5" />
-                  <line x1="60" y1="40" x2="76" y2="40" stroke={Math.hypot(targetAim.x, targetAim.y) < 0.22 ? '#10b981' : '#38bdf8'} strokeWidth="1.5" />
+                <svg className="hud-crosshair-svg" viewBox="0 0 90 90">
+                  <circle
+                    cx="45"
+                    cy="45"
+                    r="30"
+                    fill="none"
+                    stroke={gimbalHUD.isLocked ? '#10b981' : '#f59e0b'}
+                    strokeWidth="1.5"
+                    strokeDasharray={gimbalHUD.isLocked ? undefined : '6 4'}
+                  />
+                  <circle
+                    cx="45"
+                    cy="45"
+                    r="3.5"
+                    fill={gimbalHUD.isLocked ? '#10b981' : '#f59e0b'}
+                  />
+                  {gimbalHUD.isLocked && (
+                    <rect
+                      x="39"
+                      y="39"
+                      width="12"
+                      height="12"
+                      fill="none"
+                      stroke="#10b981"
+                      strokeWidth="1.5"
+                    />
+                  )}
+                  <line x1="45" y1="5" x2="45" y2="24" stroke={gimbalHUD.isLocked ? '#10b981' : '#f59e0b'} strokeWidth="1.5" />
+                  <line x1="45" y1="66" x2="45" y2="85" stroke={gimbalHUD.isLocked ? '#10b981' : '#f59e0b'} strokeWidth="1.5" />
+                  <line x1="5" y1="45" x2="24" y2="45" stroke={gimbalHUD.isLocked ? '#10b981' : '#f59e0b'} strokeWidth="1.5" />
+                  <line x1="66" y1="45" x2="85" y2="45" stroke={gimbalHUD.isLocked ? '#10b981' : '#f59e0b'} strokeWidth="1.5" />
                 </svg>
               </div>
 
               <div className="hud-bottom-tape">
-                <span>AZIMUTH: {(targetAim.x * 45).toFixed(1)}°</span>
-                <span>ELEVATION: {(targetAim.y * 30).toFixed(1)}°</span>
-                <span>RANGE: 3.4M</span>
+                <span>AZIMUTH: {(-targetAim.x * 54).toFixed(1)}°</span>
+                <span>ELEVATION: {(targetAim.y * 35).toFixed(1)}°</span>
+                <span>LOCK CONE: {gimbalHUD.angleDeg.toFixed(1)}° / 10.3°</span>
               </div>
             </div>
           )}

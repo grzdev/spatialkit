@@ -203,22 +203,86 @@ export function ResponsiveCameraFraming({
   return null;
 }
 
-// ─── Real-Time 3D -> Screen Projection Tracker for Gimbal Basketball ────────
-function GimbalTracker({
+// ─── Fighter-Jet Camera Turret & Lock-On Seeker for Gimbal Basketball ───────
+export function GimbalCameraTurret({
+  active,
+  aim,
   ballPosRef,
-  onScreenUpdate,
+  onHUDUpdate,
 }: {
+  active: boolean;
+  aim: JoystickValue;
   ballPosRef: React.MutableRefObject<Vector3>;
-  onScreenUpdate: (pos: { x: number; y: number; inFrustum: boolean }) => void;
+  onHUDUpdate: (info: {
+    isLocked: boolean;
+    screenX: number;
+    screenY: number;
+    distMeters: number;
+    inFrustum: boolean;
+    angleDeg: number;
+    heading: number;
+    pitch: number;
+  }) => void;
 }) {
-  const { camera } = useThree();
+  const { camera, size } = useThree();
+  const aimForward = useRef(new Vector3());
+  const targetDir = useRef(new Vector3());
+  const tempVec = useRef(new Vector3());
+  const wasActive = useRef(false);
+
   useFrame(() => {
-    const v = ballPosRef.current.clone();
-    v.project(camera);
-    const screenX = (v.x * 0.5 + 0.5) * 100;
-    const screenY = (-v.y * 0.5 + 0.5) * 100;
-    onScreenUpdate({ x: screenX, y: screenY, inFrustum: v.z < 1 });
+    if (!active) {
+      wasActive.current = false;
+      return;
+    }
+
+    // Determine tactical camera station in front of flight zone
+    const aspect = size.width / Math.max(1, size.height);
+    // On mobile / portrait screens, step back slightly for wide visibility
+    const baseZ = aspect < 1.2 ? 10.5 : 8.2;
+    const baseY = 2.0;
+    const basePos = new Vector3(0, baseY, baseZ);
+
+    if (!wasActive.current) {
+      camera.position.copy(basePos);
+      wasActive.current = true;
+    } else {
+      camera.position.lerp(basePos, 0.12);
+    }
+
+    // THE CAMERA IS THE TRACKER: rotation steered smoothly by user flight joystick
+    // Left/Right joystick turns Camera Yaw (horizontal pan)
+    // Up/Down joystick tilts Camera Pitch (vertical pitch)
+    // Left/Right also applies subtle tactical aircraft bank roll
+    const targetYaw = -aim.x * 0.95;   // ~54° yaw left/right
+    const targetPitch = aim.y * 0.62;  // ~35° pitch up/down
+    const targetRoll = -aim.x * 0.10;  // fighter jet banking
+
+    camera.rotation.y += (targetYaw - camera.rotation.y) * 0.20;
+    camera.rotation.x += (targetPitch - camera.rotation.x) * 0.20;
+    camera.rotation.z += (targetRoll - camera.rotation.z) * 0.20;
+
+    // Angular check for missile lock: angle between camera forward vector and target
+    camera.getWorldDirection(aimForward.current);
+    targetDir.current.copy(ballPosRef.current).sub(camera.position).normalize();
+    const angleRad = aimForward.current.angleTo(targetDir.current);
+    const angleDeg = (angleRad * 180) / Math.PI;
+
+    // Lock cone: within 0.18 radians (~10.3 degrees) = TARGET MISSILE LOCK!
+    const isLocked = angleRad < 0.18;
+
+    // Real-time screen-space projection of basketball
+    tempVec.current.copy(ballPosRef.current).project(camera);
+    const inFrustum = tempVec.current.z < 1;
+    const screenX = (tempVec.current.x * 0.5 + 0.5) * 100;
+    const screenY = (-tempVec.current.y * 0.5 + 0.5) * 100;
+    const distMeters = Math.round(camera.position.distanceTo(ballPosRef.current) * 10) / 10;
+    const heading = Math.round(((camera.rotation.y * (180 / Math.PI) * -1) % 360 + 360) % 360);
+    const pitch = Math.round(camera.rotation.x * (180 / Math.PI));
+
+    onHUDUpdate({ isLocked, screenX, screenY, distMeters, inFrustum, angleDeg, heading, pitch });
   });
+
   return null;
 }
 
@@ -290,7 +354,16 @@ export function Playground({
   const [lightBrightness, setLightBrightness] = useState(0.55); // Default in the middle!
   const [targetAim, setTargetAim] = useState<JoystickValue>({ x: 0, y: 0 });
   const ballPositionRef = useRef(new Vector3(0, 2, 0));
-  const [ballScreenPos, setBallScreenPos] = useState({ x: 50, y: 50, inFrustum: true });
+  const [gimbalHUD, setGimbalHUD] = useState({
+    isLocked: false,
+    screenX: 50,
+    screenY: 50,
+    distMeters: 8.5,
+    inFrustum: true,
+    angleDeg: 0,
+    heading: 0,
+    pitch: 0,
+  });
 
   const [liftHeight, setLiftHeight] = useState(0.0); // Minimum height rests on 3D grid line!
   const [animationProgress, setAnimationProgress] = useState(0);
@@ -357,11 +430,8 @@ export function Playground({
     return [new Plane(normal, constant)];
   }, [activeTool, crossSectionEnabled, sectionAxis, sectionOffset]);
 
-  // Target lock-on detection: reticle aims at the real floating ball position on screen
-  const aimXPercent = 50 + targetAim.x * 38;
-  const aimYPercent = 50 - targetAim.y * 38;
-  const distanceToTarget = Math.hypot(aimXPercent - ballScreenPos.x, aimYPercent - ballScreenPos.y);
-  const isTargetLocked = distanceToTarget < 9.5;
+  // Target missile lock status derived directly from camera turret angular aim
+  const isTargetLocked = gimbalHUD.isLocked;
 
   function captureStudioSnapshot() {
     const canvas = viewportRef.current?.querySelector('canvas');
@@ -545,69 +615,105 @@ export function Playground({
         </div>
       )}
 
-      {/* ─── Tactical Gimbal HUD Overlay (Tracks floating basketball in real time!) ─── */}
+      {/* ─── Tactical Gimbal HUD Overlay (Fighter-Jet Camera Turret & Missile Lock) ─── */}
       {activeModelControl === 'target' && (
         <div className="target-hud-overlay" aria-hidden="true">
           <div className="hud-top-tape">
-            <span className="tape-heading">✦ GIMBAL LOCK-ON SYSTEM</span>
-            <span>AIM: [{(targetAim.x * 100).toFixed(0)}, {(targetAim.y * 100).toFixed(0)}]</span>
-            <span className={`hud-status-badge ${isTargetLocked ? 'locked' : ''}`}>
-              {isTargetLocked ? '● TARGET LOCKED' : '○ ACQUIRING TARGET'}
+            <span className="tape-heading">✦ GIMBAL CAMERA TRACKER</span>
+            <span>HDG {gimbalHUD.heading.toString().padStart(3, '0')}° · PITCH {gimbalHUD.pitch >= 0 ? `+${gimbalHUD.pitch}` : gimbalHUD.pitch}°</span>
+            <span className={`hud-status-badge ${gimbalHUD.isLocked ? 'locked' : ''}`}>
+              {gimbalHUD.isLocked ? '● TARGET LOCKED' : '○ ACQUIRING TARGET'}
             </span>
           </div>
 
-          {/* Real-time tracking bracket following the moving basketball across the 3D screen */}
-          <div
-            className={`hud-target-bracket ${isTargetLocked ? 'is-locked' : ''}`}
-            style={{
-              position: 'absolute',
-              left: `${ballScreenPos.x}%`,
-              top: `${ballScreenPos.y}%`,
-              transform: 'translate(-50%, -50%)',
-              width: 130,
-              height: 130,
-              pointerEvents: 'none',
-              border: `1.5px dashed ${isTargetLocked ? '#10b981' : '#f59e0b'}`,
-              borderRadius: 8,
-              transition: 'border-color 0.15s ease',
-            }}
-          >
-            <span className="bracket-label">
-              {isTargetLocked ? 'BASKETBALL TARGET [LOCKED]' : 'BASKETBALL TARGET'}
-            </span>
-            <div className="bracket-corner tl" />
-            <div className="bracket-corner tr" />
-            <div className="bracket-corner bl" />
-            <div className="bracket-corner br" />
-          </div>
+          {/* Real-time tracking bracket framing the moving basketball across 3D space: ORANGE -> GREEN */}
+          {gimbalHUD.inFrustum && (
+            <div
+              className={`hud-target-bracket ${gimbalHUD.isLocked ? 'is-locked' : ''}`}
+              style={{
+                position: 'absolute',
+                left: `${gimbalHUD.screenX}%`,
+                top: `${gimbalHUD.screenY}%`,
+                transform: 'translate(-50%, -50%)',
+                width: 124,
+                height: 124,
+                pointerEvents: 'none',
+                border: `2px ${gimbalHUD.isLocked ? 'solid #10b981' : 'dashed #f59e0b'}`,
+                borderRadius: 8,
+                boxShadow: gimbalHUD.isLocked ? '0 0 18px rgba(16, 185, 129, 0.45)' : undefined,
+                transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+              }}
+            >
+              <span
+                className="bracket-label"
+                style={{
+                  borderColor: gimbalHUD.isLocked ? '#10b981' : '#f59e0b',
+                  color: gimbalHUD.isLocked ? '#10b981' : '#f59e0b',
+                  background: gimbalHUD.isLocked ? 'rgba(6, 78, 59, 0.92)' : 'rgba(15, 23, 42, 0.88)',
+                }}
+              >
+                {gimbalHUD.isLocked
+                  ? `● BASKETBALL LOCKED · ${gimbalHUD.distMeters}m [MISSILE LOCK]`
+                  : `○ ACQUIRING BASKETBALL · ${gimbalHUD.distMeters}m (${gimbalHUD.angleDeg.toFixed(1)}° OFF)`}
+              </span>
+              <div className="bracket-corner tl" style={{ borderColor: gimbalHUD.isLocked ? '#10b981' : '#f59e0b' }} />
+              <div className="bracket-corner tr" style={{ borderColor: gimbalHUD.isLocked ? '#10b981' : '#f59e0b' }} />
+              <div className="bracket-corner bl" style={{ borderColor: gimbalHUD.isLocked ? '#10b981' : '#f59e0b' }} />
+              <div className="bracket-corner br" style={{ borderColor: gimbalHUD.isLocked ? '#10b981' : '#f59e0b' }} />
+            </div>
+          )}
 
-          {/* Crosshair reticle driven by user's joystick */}
+          {/* Optical crosshair fixed to camera center bore-sight: ORANGE -> GREEN */}
           <div
-            className="hud-reticle-movable"
+            className="hud-reticle-center"
             style={{
               position: 'absolute',
-              left: `${aimXPercent}%`,
-              top: `${aimYPercent}%`,
+              left: '50%',
+              top: '50%',
               transform: 'translate(-50%, -50%)',
-              width: 80,
-              height: 80,
+              width: 90,
+              height: 90,
               pointerEvents: 'none',
             }}
           >
-            <svg className="hud-crosshair-svg" viewBox="0 0 80 80">
-              <circle cx="40" cy="40" r="28" fill="none" stroke={isTargetLocked ? '#10b981' : '#38bdf8'} strokeWidth="1.5" strokeDasharray="6 4" />
-              <circle cx="40" cy="40" r="4" fill={isTargetLocked ? '#10b981' : '#38bdf8'} />
-              <line x1="40" y1="4" x2="40" y2="20" stroke={isTargetLocked ? '#10b981' : '#38bdf8'} strokeWidth="1.5" />
-              <line x1="40" y1="60" x2="40" y2="76" stroke={isTargetLocked ? '#10b981' : '#38bdf8'} strokeWidth="1.5" />
-              <line x1="4" y1="40" x2="20" y2="40" stroke={isTargetLocked ? '#10b981' : '#38bdf8'} strokeWidth="1.5" />
-              <line x1="60" y1="40" x2="76" y2="40" stroke={isTargetLocked ? '#10b981' : '#38bdf8'} strokeWidth="1.5" />
+            <svg className="hud-crosshair-svg" viewBox="0 0 90 90">
+              <circle
+                cx="45"
+                cy="45"
+                r="30"
+                fill="none"
+                stroke={gimbalHUD.isLocked ? '#10b981' : '#f59e0b'}
+                strokeWidth="1.5"
+                strokeDasharray={gimbalHUD.isLocked ? undefined : '6 4'}
+              />
+              <circle
+                cx="45"
+                cy="45"
+                r="3.5"
+                fill={gimbalHUD.isLocked ? '#10b981' : '#f59e0b'}
+              />
+              {gimbalHUD.isLocked && (
+                <rect
+                  x="39"
+                  y="39"
+                  width="12"
+                  height="12"
+                  fill="none"
+                  stroke="#10b981"
+                  strokeWidth="1.5"
+                />
+              )}
+              <line x1="45" y1="5" x2="45" y2="24" stroke={gimbalHUD.isLocked ? '#10b981' : '#f59e0b'} strokeWidth="1.5" />
+              <line x1="45" y1="66" x2="45" y2="85" stroke={gimbalHUD.isLocked ? '#10b981' : '#f59e0b'} strokeWidth="1.5" />
+              <line x1="5" y1="45" x2="24" y2="45" stroke={gimbalHUD.isLocked ? '#10b981' : '#f59e0b'} strokeWidth="1.5" />
+              <line x1="66" y1="45" x2="85" y2="45" stroke={gimbalHUD.isLocked ? '#10b981' : '#f59e0b'} strokeWidth="1.5" />
             </svg>
           </div>
 
           <div className="hud-bottom-tape">
-            <span>AZIMUTH: {(targetAim.x * 45).toFixed(1)}°</span>
-            <span>ELEVATION: {(targetAim.y * 30).toFixed(1)}°</span>
-            <span>TRAJECTORY: DYNAMIC 3D</span>
+            <span>AZIMUTH: {(-targetAim.x * 54).toFixed(1)}°</span>
+            <span>ELEVATION: {(targetAim.y * 35).toFixed(1)}°</span>
+            <span>LOCK CONE: {gimbalHUD.angleDeg.toFixed(1)}° / 10.3°</span>
           </div>
         </div>
       )}
@@ -705,21 +811,30 @@ export function Playground({
         <BlenderControls
           ref={controlsRef}
           makeDefault
-          target={activeTool === 'gimbal' ? [0, 1.8, 0] : [0, 1.15, 0]}
+          enabled={activeTool !== 'gimbal'}
+          target={activeTool === 'gimbal' ? [0, 2.0, 0] : [0, 1.15, 0]}
           minDistance={1.8}
           maxDistance={28}
           enableDamping
         />
 
-        {/* Responsive camera director: centered vertically by default, and zoomed way out in Gimbal mode */}
-        <ResponsiveCameraFraming
-          controlsRef={controlsRef}
-          basePosition={activeTool === 'gimbal' ? [7.8, 5.2, 8.8] : [4.6, 2.5, 4.8]}
-          target={activeTool === 'gimbal' ? [0, 1.8, 0] : [0, 1.15, 0]}
-        />
+        {/* Responsive camera director: handles vertical centering on other tools; bypassed during Gimbal turret piloting */}
+        {activeTool !== 'gimbal' && (
+          <ResponsiveCameraFraming
+            controlsRef={controlsRef}
+            basePosition={[4.6, 2.5, 4.8]}
+            target={[0, 1.15, 0]}
+          />
+        )}
 
+        {/* Fighter-Jet Camera Turret & Lock-On Seeker: steers camera with joystick */}
         {activeTool === 'gimbal' && (
-          <GimbalTracker ballPosRef={ballPositionRef} onScreenUpdate={setBallScreenPos} />
+          <GimbalCameraTurret
+            active={activeTool === 'gimbal'}
+            aim={targetAim}
+            ballPosRef={ballPositionRef}
+            onHUDUpdate={setGimbalHUD}
+          />
         )}
 
         <PlaygroundDirector turntable={turntable} controlsRef={controlsRef} />
