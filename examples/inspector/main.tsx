@@ -36,6 +36,23 @@ import {
   TactileDial,
   TactileJoystick,
 } from './ControlsLab';
+import {
+  Playground,
+  IconSpotlight,
+  IconGimbal,
+  IconLift,
+  IconScrubber,
+  IconOrbit,
+  IconPalette,
+  IconTurntable,
+  IconCamera,
+  IconReset,
+  IconExpand,
+  IconCalipers,
+  IconSlicer,
+  IconHotspot,
+  IconNotes,
+} from './Playground';
 import './style.css';
 
 const title = (part: SpatialPart) => String(part.metadata.label ?? part.name);
@@ -65,7 +82,7 @@ interface EnvironmentConfig {
   shadowOpacity: number;
 }
 
-const ENVIRONMENT_PRESETS: Record<StudioEnvironmentPreset, EnvironmentConfig> = {
+export const ENVIRONMENT_PRESETS: Record<StudioEnvironmentPreset, EnvironmentConfig> = {
   blueprint: {
     label: 'Blueprint',
     bgLight: '#e8eef8',
@@ -318,7 +335,7 @@ function applyTheme(theme: 'light' | 'dark') {
 // ─── Interactive 3D Model Rig (Control Lab tools applied to loaded model) ───
 export type ActiveModelControl = 'none' | 'light' | 'target' | 'lift' | 'scrub';
 
-function InteractiveModelRig({
+export function InteractiveModelRig({
   activeControl,
   lightDial,
   liftHeight,
@@ -461,7 +478,21 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
   const [notes, setNotes]             = useState<Note[]>(model.id === 'pump' ? INITIAL_NOTES : []);
   const [storageReady, setStorageReady] = useState(false);
   const [theme, setTheme]             = useState<'light' | 'dark'>(getInitialTheme);
-  const [labOpen, setLabOpen]         = useState(() => window.location.hash === '#controls');
+  type ActiveView = 'inspector' | 'playground' | 'controls';
+  const [activeView, setActiveView]   = useState<ActiveView>(() => {
+    if (window.location.hash === '#playground') return 'playground';
+    if (window.location.hash === '#controls') return 'controls';
+    return 'inspector';
+  });
+
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  useEffect(() => {
+    const onPointerMove = (e: PointerEvent) => {
+      setMousePos({ x: e.clientX, y: e.clientY });
+    };
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    return () => window.removeEventListener('pointermove', onPointerMove);
+  }, []);
 
   const selectRef = useRef<(target: string | null) => void>(() => {});
   const controls  = useRef<ComponentRef<typeof BlenderControls>>(null);
@@ -552,10 +583,11 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
     return [plane];
   }, [crossSectionEnabled, sectionAxis, sectionOffset]);
 
-  function showLab(open: boolean) {
-    setLabOpen(open);
-    if (open) setTourActive(false);
-    history.replaceState(null, '', open ? '#controls' : `${location.pathname}${location.search}`);
+  function switchView(view: ActiveView) {
+    setActiveView(view);
+    if (view !== 'inspector') setTourActive(false);
+    const hash = view === 'inspector' ? '' : `#${view}`;
+    history.replaceState(null, '', `${location.pathname}${location.search}${hash}`);
   }
 
   function triggerCameraFocus(partId: string, point?: [number, number, number]) {
@@ -782,12 +814,30 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
         <a className="brand" href="/" aria-label="SpatialKit home">
           <span className="brand-mark">S<span>↗</span></span>
           spatialkit
-          <span className="version">REACT PREVIEW</span>
         </a>
 
         <nav className="topbar-nav" aria-label="Site navigation">
-          <button className={`nav-view ${!labOpen ? 'nav-active' : ''}`} onClick={() => showLab(false)}>Inspector</button>
-          <button className={`nav-view ${labOpen ? 'nav-active' : ''}`} onClick={() => showLab(true)}>Controls lab</button>
+          <button
+            className={`nav-view ${activeView === 'inspector' ? 'nav-active' : ''}`}
+            onClick={() => switchView('inspector')}
+          >
+            Inspector
+          </button>
+          <button
+            className={`nav-view nav-playground ${activeView === 'playground' ? 'nav-active' : ''}`}
+            onClick={() => switchView('playground')}
+          >
+            <span className="playground-text-wrap">
+              Playground
+              <span className="playground-arc-orb" aria-hidden="true" />
+            </span>
+          </button>
+          <button
+            className={`nav-view ${activeView === 'controls' ? 'nav-active' : ''}`}
+            onClick={() => switchView('controls')}
+          >
+            Controls lab
+          </button>
 
           <span className="topbar-sep" aria-hidden="true" />
 
@@ -874,7 +924,19 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
         </div>
       </div>
 
-      {labOpen ? <ControlsLab onBack={() => showLab(false)} /> : (
+      {activeView === 'controls' ? (
+        <ControlsLab onBack={() => switchView('inspector')} />
+      ) : activeView === 'playground' ? (
+        <Playground
+          model={model}
+          onUpload={onUpload}
+          onDemo={onDemo}
+          uploading={uploading}
+          uploadError={uploadError}
+          theme={theme}
+          notes={notes}
+        />
+      ) : (
       /* ── 3-column workspace — fills remaining viewport ──────────── */
       <main className={`workspace ${presentMode ? 'presentation-mode' : ''}`} aria-label="SpatialKit model inspector">
 
@@ -1217,19 +1279,25 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                 ↺
               </button>
               <button
-                aria-label={codeOpen ? 'Close integration guide' : 'Open integration guide'}
-                aria-pressed={codeOpen}
-                onClick={() => setCodeOpen((o) => !o)}
-                {...tooltipProps('Integration Guide', 'View and export production-ready React snippet for your site.', 'Esc')}
+                className={`view-action-pill ${turntable ? 'active' : ''}`}
+                aria-label={turntable ? 'Stop 360 turntable orbit' : 'Start 360 turntable orbit'}
+                aria-pressed={turntable}
+                onClick={() => setTurntable((t) => !t)}
+                {...tooltipProps('360° Turntable', 'Continuously orbit camera around model at smooth showcase speed.')}
               >
-                〈/〉
+                ⟳ 360°
               </button>
               <button
                 type="button"
                 className={`tools-drawer-pill ${toolsDrawerOpen ? 'active' : ''}`}
                 aria-label="Toggle Spatial Tools Drawer"
                 aria-pressed={toolsDrawerOpen}
-                onClick={() => setToolsDrawerOpen((o) => !o)}
+                onClick={() => {
+                  setToolsDrawerOpen((o) => {
+                    if (!o) setActiveTooltip(null);
+                    return !o;
+                  });
+                }}
                 {...tooltipProps('Spatial Tools Drawer', 'Open Blender-style N drawer with Model Rigs, Studio Lighting, Tour, and Measurement tools.', 'N')}
               >
                 ✦ Tools <kbd>N</kbd>
@@ -1237,9 +1305,18 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
             </div>
           </div>
 
-          {/* ─── Hovering Action Toast / Tooltip ─── */}
-          {activeTooltip && (
-            <div className="hover-action-toast" role="tooltip">
+          {/* ─── Hovering Action Toast / Tooltip (Follows Mouse Cursor & Hidden when Drawer is Open) ─── */}
+          {activeTooltip && !toolsDrawerOpen && (
+            <div
+              className="hover-action-toast"
+              role="tooltip"
+              style={{
+                left: `${Math.min(window.innerWidth - 330, Math.max(16, mousePos.x + 16))}px`,
+                top: `${mousePos.y > window.innerHeight - 100 ? mousePos.y - 80 : mousePos.y + 16}px`,
+                bottom: 'auto',
+                transform: 'none',
+              }}
+            >
               <div className="toast-header">
                 <strong>{activeTooltip.title}</strong>
                 {activeTooltip.shortcut && <kbd>{activeTooltip.shortcut}</kbd>}
@@ -1433,7 +1510,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                         onClick={() => setActiveModelControl((c) => (c === 'light' ? 'none' : 'light'))}
                         {...tooltipProps('Inspection Light Rig', 'Orbit a high-intensity spotlight around the model with the tactile dial.')}
                       >
-                        💡 Light Rig
+                        <IconSpotlight />
+                        <span>Light Rig</span>
                       </button>
                       <button
                         type="button"
@@ -1441,7 +1519,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                         onClick={() => setActiveModelControl((c) => (c === 'target' ? 'none' : 'target'))}
                         {...tooltipProps('Flight Gimbal Rig', 'Target and lock onto the levitating model using the tactical flight joystick.')}
                       >
-                        🎯 Flight Gimbal
+                        <IconGimbal />
+                        <span>Flight Gimbal</span>
                       </button>
                       <button
                         type="button"
@@ -1449,7 +1528,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                         onClick={() => setActiveModelControl((c) => (c === 'lift' ? 'none' : 'lift'))}
                         {...tooltipProps('Hydraulic Lift Rig', 'Mount model on a hydraulic platform raised and lowered by a pull lever.')}
                       >
-                        🛗 Hydraulic Lift
+                        <IconLift />
+                        <span>Hydraulic Lift</span>
                       </button>
                       <button
                         type="button"
@@ -1457,7 +1537,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                         onClick={() => setActiveModelControl((c) => (c === 'scrub' ? 'none' : 'scrub'))}
                         {...tooltipProps('Mechanical Scrubber', 'Scrub through animations or exploded parts with the horizontal slider lever.')}
                       >
-                        ⏱ Scrubber
+                        <IconScrubber />
+                        <span>Scrubber</span>
                       </button>
                       <button
                         type="button"
@@ -1465,7 +1546,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                         onClick={() => setActiveModelControl('none')}
                         {...tooltipProps('Reset Rig', 'Return to standard inspection mode without active mechanical controls.')}
                       >
-                        ⊘ Standard Orbit
+                        <IconOrbit />
+                        <span>Standard Orbit</span>
                       </button>
                     </div>
                   </div>
@@ -1628,7 +1710,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                         onClick={() => setTurntable((t) => !t)}
                         {...tooltipProps('360° Turntable', 'Continuously orbit around the model for video capture.')}
                       >
-                        {turntable ? '■ Stop Turntable' : '⟳ 360° Turntable'}
+                        <IconTurntable />
+                        <span>{turntable ? 'Stop Turntable' : '360° Turntable'}</span>
                       </button>
                       <button
                         type="button"
@@ -1647,7 +1730,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                         }}
                         {...tooltipProps('Guided Camera Tour', notes.length > 0 ? `Fly camera sequentially across ${notes.length} hotspots.` : 'Requires at least one note/hotspot.')}
                       >
-                        {tourActive ? '■ Stop Tour' : `▶ Tour (${notes.length})`}
+                        <IconGimbal />
+                        <span>{tourActive ? 'Stop Tour' : `Tour (${notes.length})`}</span>
                       </button>
                       <button
                         type="button"
@@ -1655,7 +1739,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                         onClick={captureStudioSnapshot}
                         {...tooltipProps('Studio Snapshot', 'Capture and download a high-res PNG snapshot of the 3D canvas.')}
                       >
-                        📷 PNG Snapshot
+                        <IconCamera />
+                        <span>Snapshot</span>
                       </button>
                       <button
                         type="button"
@@ -1663,7 +1748,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                         onClick={() => setPresentMode((p) => !p)}
                         {...tooltipProps('Presentation Mode', 'Toggle distraction-free widescreen showcase mode.', 'F')}
                       >
-                        ⛶ Fullscreen
+                        <IconExpand />
+                        <span>Fullscreen</span>
                       </button>
                     </div>
                   </div>
@@ -1694,7 +1780,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                         }}
                         {...tooltipProps('Calipers Measurement', 'Click two points on the model surface to measure real 3D distance.')}
                       >
-                        📏 Calipers
+                        <IconCalipers />
+                        <span>Calipers</span>
                       </button>
                       <button
                         type="button"
@@ -1702,7 +1789,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                         onClick={() => setCrossSectionEnabled((s) => !s)}
                         {...tooltipProps('Slicing Plane', 'Cut cross-section through geometry along X, Y, or Z axis.')}
                       >
-                        ✂ Slicing Plane
+                        <IconSlicer />
+                        <span>Slicing Plane</span>
                       </button>
                       <button
                         type="button"
@@ -1717,7 +1805,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                         }}
                         {...tooltipProps('Place Hotspot', 'Click anywhere on the model to anchor a pinpoint 3D annotation.')}
                       >
-                        ⌖ Place Hotspot
+                        <IconHotspot />
+                        <span>Place Hotspot</span>
                       </button>
                       <button
                         type="button"
@@ -1725,7 +1814,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                         onClick={() => setShowNotes((s) => !s)}
                         {...tooltipProps('Toggle Annotations', 'Show or hide all 3D annotation markers and labels.')}
                       >
-                        ▤ Annotations
+                        <IconNotes />
+                        <span>Annotations</span>
                       </button>
                     </div>
 
