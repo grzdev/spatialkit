@@ -54,7 +54,17 @@
 
 /* ─── Reset ─────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
-body { margin: 0; }
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+[data-theme="dark"] body {
+  background: var(--bg);
+}
 button, input, textarea { font: inherit; }
 button, a, input, textarea { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; color: inherit; border: 0; background: none; }
@@ -67,15 +77,16 @@ p, h1, h2, h3 { margin: 0; }
 button, a { transition: background .15s, color .15s, border-color .15s; }
 ::selection { background: var(--accent-dim); }
 
-/* ─── App Shell ─────────────────────────────────────────────────────── */
+/* ─── App Shell (Full bleed across all displays, 0 white sidebars) ───── */
 .app {
   display: flex;
   flex-direction: column;
   height: 100dvh;
+  width: 100%;
+  max-width: 100%;
   overflow: hidden;
   background: var(--bg);
-  max-width: 1920px;
-  margin: auto;
+  margin: 0;
 }
 
 /* ─── Topbar ─────────────────────────────────────────────────────────── */
@@ -1618,7 +1629,7 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
 
 @media (max-width: 860px) {
   .workspace { grid-template-columns: 170px minmax(0,1fr) 220px; }
-  .topbar-nav a:not(.code-button-inline):not([href*="github"]) { display: none; }
+  .topbar-nav a[href*="github"], .topbar-sep { display: none; }
 }
 
 @media (max-width: 700px) {
@@ -1634,9 +1645,20 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   .placement-banner { max-width: 190px; }
   .code-panel { grid-template-columns: minmax(0,1fr); padding: 20px; gap: 16px; }
   .code-panel-wrapper.open { max-height: 75dvh; }
-  .topbar-nav a, .topbar-sep, .nav-active { display: none; }
-  .topbar-nav button { font-size: 11px; padding: 6px; }
-  .topbar { padding: 0 12px; }
+  .topbar-nav a[href*="github"], .topbar-sep { display: none; }
+  .topbar-nav { gap: 4px; }
+  .topbar-nav button { font-size: 10.5px; padding: 5px 7px; }
+  .topbar { padding: 0 10px; height: 50px; min-height: 50px; }
+  .brand { font-size: 16px; gap: 6px; }
+  .brand-mark { width: 22px; height: 24px; }
+}
+
+@media (max-width: 480px) {
+  .brand span:not(.brand-mark) { display: none; }
+  .code-button-inline span:not(.code-mono) { display: none; }
+  .code-button-inline { padding: 5px 7px; }
+  .topbar-nav { gap: 2px; }
+  .topbar-nav button { font-size: 9.5px; padding: 4px 5px; }
 }
 
 /* ─── Controls Lab ─────────────────────────────────────────────────── */
@@ -1864,18 +1886,14 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   animation: console-slide-up 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   min-width: 290px;
   max-width: 360px;
+  transition: max-height 0.24s cubic-bezier(0.16, 1, 0.3, 1), padding 0.2s ease;
 }
-@media (max-width: 768px) {
-  .playground-active-console {
-    right: 14px;
-    bottom: 74px;
-    max-width: calc(100% - 28px);
-  }
-}
+
 @keyframes console-slide-up {
   from { opacity: 0; transform: translateY(10px) scale(0.96); }
   to { opacity: 1; transform: translateY(0); }
 }
+
 .console-header {
   display: flex;
   align-items: center;
@@ -1899,6 +1917,26 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   font: 8px 'JetBrains Mono', monospace;
   color: #94a3b8;
 }
+.console-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.console-minimize-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 5px;
+  color: #cbd5e1;
+  font-size: 11px;
+  padding: 3px 6px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.console-minimize-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
 .console-close-btn {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -1914,6 +1952,269 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   background: rgba(239, 68, 68, 0.25);
   color: #ef4444;
   border-color: #ef4444;
+}
+
+/* ─── Responsive Adjustments for Mobile / Tablet Screen Sizes ────────── */
+@media (max-width: 768px) {
+  .playground-topbar {
+    top: 8px;
+    left: 10px;
+    right: 10px;
+    gap: 6px;
+  }
+  .playground-meta-badge {
+    padding: 4px 8px;
+    gap: 6px;
+    font-size: 10px;
+  }
+  .playground-meta-badge strong {
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+  }
+  .playground-top-btn {
+    padding: 4px 8px;
+    font-size: 10px;
+    gap: 4px;
+  }
+  .playground-top-actions {
+    gap: 5px;
+  }
+
+  /* Dock becomes horizontally scrollable without cluttering the screen */
+  .playground-dock-container {
+    bottom: 12px;
+    max-width: calc(100% - 16px);
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .playground-floating-dock {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    max-width: 100%;
+    padding: 4px 6px;
+    border-radius: 12px;
+    gap: 3px;
+  }
+  .playground-floating-dock::-webkit-scrollbar {
+    display: none;
+  }
+  .dock-item-btn {
+    padding: 6px 9px;
+    font-size: 10px;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .dock-separator {
+    height: 18px;
+    margin: 0 2px;
+    flex-shrink: 0;
+  }
+
+  /* Active console docks as a sleek app bottom-drawer on mobile */
+  .playground-active-console {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    border-radius: 20px 20px 0 0;
+    padding: 12px 16px 24px;
+    box-shadow: 0 -14px 40px rgba(0, 0, 0, 0.85);
+    border: 1px solid rgba(45, 212, 191, 0.35);
+    border-bottom: none;
+    z-index: 60;
+    max-height: 52vh;
+    overflow-y: auto;
+    animation: console-sheet-up 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .playground-active-console.minimized {
+    max-height: 52px;
+    padding: 10px 16px;
+    overflow: hidden;
+    cursor: pointer;
+    background: rgba(15, 23, 42, 0.98);
+  }
+  .playground-active-console.minimized .console-body {
+    display: none !important;
+  }
+  @keyframes console-sheet-up {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  .console-drag-handle {
+    width: 36px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 2px;
+    margin: -4px auto 8px;
+    cursor: pointer;
+  }
+}
+
+/* ─── Playground Tools Slide-Over Sidebar Drawer ─────────────────────── */
+.playground-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 70;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.playground-sidebar-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.playground-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(350px, 90vw);
+  background: rgba(15, 23, 42, 0.97);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border-left: 1px solid rgba(148, 163, 184, 0.22);
+  box-shadow: -18px 0 54px rgba(0, 0, 0, 0.85);
+  z-index: 75;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow-y: auto;
+}
+.playground-sidebar.open {
+  transform: translateX(0);
+}
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(2, 6, 23, 0.45);
+}
+.sidebar-header strong {
+  font: 700 12px 'JetBrains Mono', monospace;
+  color: var(--accent);
+  letter-spacing: 0.8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sidebar-close-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cbd5e1;
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.sidebar-close-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+  color: #ef4444;
+}
+.sidebar-content {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sidebar-section-title {
+  font: 700 9px 'JetBrains Mono', monospace;
+  color: #94a3b8;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.sidebar-tool-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(30, 41, 59, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+  width: 100%;
+}
+.sidebar-tool-card:hover {
+  background: rgba(45, 212, 191, 0.12);
+  border-color: rgba(45, 212, 191, 0.4);
+  transform: translateX(-2px);
+}
+.sidebar-tool-card.active {
+  background: rgba(45, 212, 191, 0.2);
+  border-color: var(--accent);
+  box-shadow: 0 4px 14px rgba(45, 212, 191, 0.18);
+}
+.sidebar-tool-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sidebar-tool-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #38bdf8;
+  flex-shrink: 0;
+}
+.sidebar-tool-card.active .sidebar-tool-icon {
+  background: var(--accent);
+  color: #0f172a;
+  border-color: var(--accent);
+}
+.sidebar-tool-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sidebar-tool-text strong {
+  font: 600 12px 'Manrope', sans-serif;
+  color: #ffffff;
+}
+.sidebar-tool-text span {
+  font: 10px 'DM Sans', sans-serif;
+  color: #94a3b8;
+}
+.sidebar-tool-status {
+  font: 700 9px 'JetBrains Mono', monospace;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  white-space: nowrap;
+}
+.sidebar-tool-card.active .sidebar-tool-status {
+  background: rgba(45, 212, 191, 0.3);
+  color: #2dd4bf;
 }
 .controls-lab { height: calc(100dvh - 58px); overflow: auto; background: var(--bg); color: var(--ink); scroll-behavior: smooth; }
 .lab-hero { min-height: 470px; padding: 54px clamp(28px, 7vw, 110px) 64px; display: flex; flex-direction: column; justify-content: center; border-bottom: 1px solid var(--border); position: relative; overflow: hidden; }

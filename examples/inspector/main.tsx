@@ -38,6 +38,7 @@ import {
 } from './ControlsLab';
 import {
   Playground,
+  ResponsiveCameraFraming,
   IconSpotlight,
   IconGimbal,
   IconLift,
@@ -1188,10 +1189,11 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
               ref={controls}
               makeDefault
               target={[0, 1, 0]}
-              minDistance={2.5}
-              maxDistance={14}
+              minDistance={2}
+              maxDistance={24}
               enableDamping
             />
+            <ResponsiveCameraFraming controlsRef={controls} basePosition={[5.1, 3.7, 5.4]} target={[0, 0.9, 0]} />
             <ViewportDirector
               turntable={turntable}
               focusRequest={focusRequest}

@@ -161,6 +161,47 @@ export function IconNotes() {
   );
 }
 
+// ─── Responsive Camera Framing: Automatically Fits Full Model on Mobile ─────
+export function ResponsiveCameraFraming({
+  controlsRef,
+  basePosition = [4.8, 3.4, 5.2],
+  target = [0, 0.9, 0],
+}: {
+  controlsRef?: React.RefObject<ComponentRef<typeof BlenderControls> | null>;
+  basePosition?: [number, number, number];
+  target?: [number, number, number];
+}) {
+  const { camera, size } = useThree();
+  const prevAspectRef = useRef<number>(0);
+
+  useEffect(() => {
+    const aspect = size.width / Math.max(1, size.height);
+    if (Math.abs(aspect - prevAspectRef.current) < 0.04) return;
+    prevAspectRef.current = aspect;
+
+    const vTarget = new Vector3(...target);
+    const vBase = new Vector3(...basePosition);
+    const vOffset = vBase.clone().sub(vTarget);
+
+    // On mobile / portrait screens (aspect < 1.3), pull the camera back so the full model fits horizontally
+    const factor = aspect < 1.3 ? Math.min(2.35, Math.max(1.15, 1.48 / aspect)) : 1.0;
+    const newPos = vTarget.clone().add(vOffset.multiplyScalar(factor));
+
+    camera.position.copy(newPos);
+    camera.lookAt(vTarget);
+    camera.updateProjectionMatrix();
+
+    if (controlsRef?.current) {
+      controlsRef.current.target.copy(vTarget);
+      controlsRef.current.update();
+      const ctrl = controlsRef.current as unknown as { saveState?: () => void };
+      ctrl.saveState?.();
+    }
+  }, [size.width, size.height, camera, controlsRef, basePosition, target]);
+
+  return null;
+}
+
 // ─── Auto Turntable Director for Playground ─────────────────────────────────
 function PlaygroundDirector({
   turntable,
@@ -218,8 +259,10 @@ export function Playground({
   const viewportRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Active Tool Selection
+  // Active Tool Selection & Responsive Sidebar
   const [activeTool, setActiveTool] = useState<string | null>('light');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [consoleMinimized, setConsoleMinimized] = useState(false);
 
   // Mechanical Rig State
   const [lightDial, setLightDial] = useState(0.72);
@@ -326,6 +369,10 @@ export function Playground({
         e.preventDefault();
         controlsRef.current?.reset();
       } else if (e.key === 'Escape') {
+        if (sidebarOpen) {
+          setSidebarOpen(false);
+          return;
+        }
         setActiveTool(null);
         setMeasuring(false);
         setCaliperPointA(null);
@@ -334,7 +381,7 @@ export function Playground({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [sidebarOpen]);
 
   // Surface click for measurements in world coordinates
   function handleSurfaceClick(hit: SurfaceHit) {
@@ -368,11 +415,13 @@ export function Playground({
     <main className="playground-workspace" ref={viewportRef} aria-label="SpatialKit 3D Playground">
       {shutterFlash && <div className="viewport-shutter-flash" aria-hidden="true" />}
 
-      {/* ─── Topbar HUD Overlay ─────────────────────────────────────── */}
+      {/* ─── Topbar HUD Overlay (Responsive for Mobile, Laptop, Desktop) ─── */}
       <div className="playground-topbar">
         <div className="playground-meta-badge">
           <span className="status-dot" aria-hidden="true" />
-          <strong>{activeTool === 'gimbal' ? 'Basketball (Gimbal Target)' : model.name}</strong>
+          <strong title={activeTool === 'gimbal' ? 'Basketball (Target)' : model.name}>
+            {activeTool === 'gimbal' ? 'Basketball' : model.name}
+          </strong>
           <span style={{ color: '#94a3b8' }}>{model.format}</span>
           <button
             type="button"
@@ -381,7 +430,7 @@ export function Playground({
             disabled={uploading}
             style={{ padding: '3px 8px', fontSize: '10px' }}
           >
-            {uploading ? 'Preparing…' : '↑ Load GLB'}
+            {uploading ? 'Preparing…' : '↑ Load'}
           </button>
           <input
             ref={fileInputRef}
@@ -433,6 +482,14 @@ export function Playground({
           >
             <IconReset />
             <span>Reset</span>
+          </button>
+          <button
+            type="button"
+            className={`playground-top-btn ${sidebarOpen ? 'active' : ''}`}
+            onClick={() => setSidebarOpen((s) => !s)}
+            title="Tools & Rigs Sidebar"
+          >
+            <span>☰ Tools</span>
           </button>
         </div>
       </div>
@@ -528,7 +585,7 @@ export function Playground({
         </div>
       )}
 
-      {/* ─── 3D Canvas ─────────────────────────────────────────────── */}
+      {/* ─── 3D Canvas with Responsive Camera Framing for Mobile & Desktop ─── */}
       <Canvas
         dpr={[1, 2]}
         camera={{ position: [4.8, 3.4, 5.2], fov: 40 }}
@@ -619,20 +676,37 @@ export function Playground({
         <BlenderControls
           ref={controlsRef}
           makeDefault
-          target={[0, 1, 0]}
-          minDistance={2}
-          maxDistance={14}
+          target={[0, 0.9, 0]}
+          minDistance={1.8}
+          maxDistance={24}
           enableDamping
         />
+
+        {/* Responsive camera director: pulls back camera on mobile/portrait so entire model is framed */}
+        <ResponsiveCameraFraming controlsRef={controlsRef} basePosition={[4.8, 3.4, 5.2]} target={[0, 0.9, 0]} />
 
         <PlaygroundDirector turntable={turntable} controlsRef={controlsRef} />
       </Canvas>
 
-      {/* ─── Floating Tool Console (Docked to Bottom-Right, model center completely clear!) ─── */}
+      {/* ─── Floating Tool Console (Docked to Bottom-Right on Desktop, Bottom Sheet on Mobile) ─── */}
       {activeTool && (
-        <aside className="playground-active-console" role="region" aria-label="Active Tool Console">
+        <aside
+          className={`playground-active-console ${consoleMinimized ? 'minimized' : ''}`}
+          role="region"
+          aria-label="Active Tool Console"
+        >
+          <div
+            className="console-drag-handle"
+            onClick={() => setConsoleMinimized((m) => !m)}
+            title="Tap to toggle controls"
+          />
+
           <div className="console-header">
-            <div className="console-header-title">
+            <div
+              className="console-header-title"
+              onClick={() => setConsoleMinimized((m) => !m)}
+              style={{ cursor: 'pointer' }}
+            >
               <strong>
                 {activeTool === 'light' && '✦ INSPECTION SPOTLIGHT RIG'}
                 {activeTool === 'gimbal' && '✦ 3D FLIGHT GIMBAL TRACKER'}
@@ -652,248 +726,269 @@ export function Playground({
                 {activeTool === 'calipers' && (latestMeasurement ? `LAST: ${latestMeasurement.distanceCm.toFixed(1)} cm` : `${measurements.length} SAVED`)}
               </span>
             </div>
-            <button
-              type="button"
-              className="console-close-btn"
-              onClick={() => {
-                setActiveTool(null);
-                setMeasuring(false);
-                setCaliperPointA(null);
-                setCrossSectionEnabled(false);
-              }}
-              aria-label="Close active console"
-            >
-              ×
-            </button>
+
+            <div className="console-header-actions">
+              <button
+                type="button"
+                className="console-minimize-btn"
+                onClick={() => setConsoleMinimized((m) => !m)}
+                title={consoleMinimized ? 'Expand controls' : 'Minimize controls'}
+              >
+                {consoleMinimized ? '▲' : '▼'}
+              </button>
+              <button
+                type="button"
+                className="console-close-btn"
+                onClick={() => {
+                  setActiveTool(null);
+                  setMeasuring(false);
+                  setCaliperPointA(null);
+                  setCrossSectionEnabled(false);
+                }}
+                aria-label="Close active console"
+              >
+                ×
+              </button>
+            </div>
           </div>
 
-          {/* Spotlight Rig Widget: Orbit dial + vertical space + Brightness lever (starts at 0.55 in middle) */}
-          {activeTool === 'light' && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-              <TactileDial
-                value={lightDial}
-                onChange={setLightDial}
-                size={92}
-                label="BEAM ORBIT"
-                formatValue={(v) => `${Math.round(v * 360)}°`}
-                showGraduations
+          <div
+            className="console-body"
+            style={{
+              width: '100%',
+              display: consoleMinimized ? 'none' : 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+            }}
+          >
+            {/* Spotlight Rig Widget: Orbit dial + vertical space + Brightness lever (starts at 0.55 in middle) */}
+            {activeTool === 'light' && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+                <TactileDial
+                  value={lightDial}
+                  onChange={setLightDial}
+                  size={92}
+                  label="BEAM ORBIT"
+                  formatValue={(v) => `${Math.round(v * 360)}°`}
+                  showGraduations
+                />
+                <div style={{ width: '100%', height: 1, background: 'rgba(255, 255, 255, 0.08)', margin: '14px 0 10px' }} />
+                <div style={{ width: '100%', padding: '0 4px' }}>
+                  <HorizontalMechanicalLever
+                    value={lightBrightness}
+                    onChange={setLightBrightness}
+                    label="BEAM INTENSITY"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Flight Gimbal Joystick Widget */}
+            {activeTool === 'gimbal' && (
+              <TactileJoystick
+                value={targetAim}
+                onChange={setTargetAim}
+                size={116}
+                label="FLIGHT GIMBAL"
               />
-              <div style={{ width: '100%', height: 1, background: 'rgba(255, 255, 255, 0.08)', margin: '14px 0 10px' }} />
-              <div style={{ width: '100%', padding: '0 4px' }}>
+            )}
+
+            {/* Hydraulic Lift Lever Widget with generous padding top & bottom */}
+            {activeTool === 'lift' && (
+              <div style={{ paddingTop: 24, paddingBottom: 24, minHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <PullLever
+                  value={liftHeight}
+                  onChange={setLiftHeight}
+                  label="PULL LEVER"
+                  unitLabel="m"
+                />
+              </div>
+            )}
+
+            {/* Mechanical Scrubber Lever Widget */}
+            {activeTool === 'scrubber' && (
+              <div style={{ width: 280, maxWidth: '100%', padding: '4px 0' }}>
                 <HorizontalMechanicalLever
-                  value={lightBrightness}
-                  onChange={setLightBrightness}
-                  label="BEAM INTENSITY"
+                  value={model.hasAnimations ? animationProgress : proceduralExplode}
+                  onChange={model.hasAnimations ? setAnimationProgress : setProceduralExplode}
+                  label={model.hasAnimations ? 'ANIMATION PROGRESS' : 'EXPLODE PROGRESS'}
                 />
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Flight Gimbal Joystick Widget */}
-          {activeTool === 'gimbal' && (
-            <TactileJoystick
-              value={targetAim}
-              onChange={setTargetAim}
-              size={116}
-              label="FLIGHT GIMBAL"
-            />
-          )}
-
-          {/* Hydraulic Lift Lever Widget with generous padding top & bottom */}
-          {activeTool === 'lift' && (
-            <div style={{ paddingTop: 24, paddingBottom: 24, minHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <PullLever
-                value={liftHeight}
-                onChange={setLiftHeight}
-                label="PULL LEVER"
-                unitLabel="m"
-              />
-            </div>
-          )}
-
-          {/* Mechanical Scrubber Lever Widget */}
-          {activeTool === 'scrubber' && (
-            <div style={{ width: 280, padding: '4px 0' }}>
-              <HorizontalMechanicalLever
-                value={model.hasAnimations ? animationProgress : proceduralExplode}
-                onChange={model.hasAnimations ? setAnimationProgress : setProceduralExplode}
-                label={model.hasAnimations ? 'ANIMATION PROGRESS' : 'EXPLODE PROGRESS'}
-              />
-            </div>
-          )}
-
-          {/* Studio Lighting & Custom Color Backdrop */}
-          {activeTool === 'studio' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {(Object.keys(ENVIRONMENT_PRESETS) as StudioEnvironmentPreset[]).map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    className={`dock-item-btn ${envPreset === key && !customStudioBg ? 'active' : ''}`}
-                    style={{ flex: 1, justifyContent: 'center', padding: '6px 4px', fontSize: '10px' }}
-                    onClick={() => {
-                      setEnvPreset(key);
-                      setCustomStudioBg(null);
-                    }}
-                  >
-                    {ENVIRONMENT_PRESETS[key].label}
-                  </button>
-                ))}
-              </div>
-              <div className="color-palette-swatches" style={{ justifyContent: 'center' }}>
-                {['#070b14', '#0f172a', '#1e293b', '#111a2c', '#18181b', '#262626', '#f8fafc', '#e2e8f0', '#fed7aa', '#134e4a', '#312e81'].map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    className={`palette-swatch ${canvasBg.toLowerCase() === c.toLowerCase() ? 'active' : ''}`}
-                    style={{ backgroundColor: c }}
-                    onClick={() => {
-                      setCustomStudioBg(c);
-                      setHexInputText(c.replace('#', ''));
-                    }}
-                    aria-label={`Select color ${c}`}
-                  />
-                ))}
-              </div>
-              <div className="hex-glide-controls">
-                <div className="hex-glide-input-wrap">
-                  <span className="hex-glide-prefix">#</span>
-                  <input
-                    type="text"
-                    className="hex-glide-text-input"
-                    maxLength={6}
-                    value={hexInputText}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/[^0-9a-fA-F]/g, '');
-                      setHexInputText(val);
-                      if (val.length === 6 || val.length === 3) {
-                        setCustomStudioBg(`#${val}`);
-                      }
-                    }}
-                    aria-label="Hex color value"
-                  />
+            {/* Studio Lighting & Custom Color Backdrop */}
+            {activeTool === 'studio' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {(Object.keys(ENVIRONMENT_PRESETS) as StudioEnvironmentPreset[]).map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`dock-item-btn ${envPreset === key && !customStudioBg ? 'active' : ''}`}
+                      style={{ flex: 1, justifyContent: 'center', padding: '6px 4px', fontSize: '10px' }}
+                      onClick={() => {
+                        setEnvPreset(key);
+                        setCustomStudioBg(null);
+                      }}
+                    >
+                      {ENVIRONMENT_PRESETS[key].label}
+                    </button>
+                  ))}
                 </div>
-                <label className="native-color-picker-button" title="Choose custom color">
-                  <span style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: canvasBg }} />
-                  <input
-                    type="color"
-                    value={canvasBg.startsWith('#') && canvasBg.length === 7 ? canvasBg : '#070b14'}
-                    onChange={(e) => {
-                      setCustomStudioBg(e.target.value);
-                      setHexInputText(e.target.value.replace('#', ''));
-                    }}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="playground-top-btn"
-                  style={{ padding: '4px 8px', fontSize: '10px' }}
-                  onClick={() => setShowGrid((g) => !g)}
-                >
-                  Grid: {showGrid ? 'ON' : 'OFF'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Slicing Plane Controls (with 100% full model coverage and Invert toggle) */}
-          {activeTool === 'slicer' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', minWidth: 270 }}>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {(['x', 'y', 'z'] as const).map((axis) => (
-                  <button
-                    key={axis}
-                    type="button"
-                    className={`dock-item-btn ${sectionAxis === axis ? 'active' : ''}`}
-                    style={{ flex: 1, justifyContent: 'center', padding: '5px 4px' }}
-                    onClick={() => setSectionAxis(axis)}
-                  >
-                    {axis.toUpperCase()} AXIS
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className={`dock-item-btn ${sectionInverted ? 'active' : ''}`}
-                  style={{ flex: 1.2, justifyContent: 'center', padding: '5px 4px' }}
-                  onClick={() => setSectionInverted((inv) => !inv)}
-                  title="Invert slice direction"
-                >
-                  ⇄ {sectionInverted ? 'INVERTED' : 'INVERT'}
-                </button>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <input
-                  type="range"
-                  min={-1}
-                  max={1}
-                  step={0.01}
-                  value={sectionOffset}
-                  onChange={(e) => setSectionOffset(parseFloat(e.target.value))}
-                  style={{ flex: 1 }}
-                />
-                <output style={{ font: '11px monospace', color: 'var(--accent)', minWidth: 36, textAlign: 'right' }}>
-                  {sectionOffset.toFixed(2)}
-                </output>
-                <button
-                  type="button"
-                  className="playground-top-btn"
-                  style={{ padding: '2px 8px', fontSize: '10px' }}
-                  onClick={() => setSectionOffset(0)}
-                  title="Reset slice plane to center"
-                >
-                  0
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Calipers Measurement Controls with prominent live distance readout */}
-          {activeTool === 'calipers' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', minWidth: 260 }}>
-              {caliperPointA ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(246, 173, 85, 0.15)', border: '1px solid #f6ad55', borderRadius: 6 }}>
-                  <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', backgroundColor: '#f6ad55' }} />
-                  <span style={{ font: '600 11px "JetBrains Mono", monospace', color: '#f6ad55' }}>
-                    POINT A ANCHORED · Click 2nd point
-                  </span>
+                <div className="color-palette-swatches" style={{ justifyContent: 'center' }}>
+                  {['#070b14', '#0f172a', '#1e293b', '#111a2c', '#18181b', '#262626', '#f8fafc', '#e2e8f0', '#fed7aa', '#134e4a', '#312e81'].map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      className={`palette-swatch ${canvasBg.toLowerCase() === c.toLowerCase() ? 'active' : ''}`}
+                      style={{ backgroundColor: c }}
+                      onClick={() => {
+                        setCustomStudioBg(c);
+                        setHexInputText(c.replace('#', ''));
+                      }}
+                      aria-label={`Select color ${c}`}
+                    />
+                  ))}
                 </div>
-              ) : latestMeasurement ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', background: 'rgba(246, 173, 85, 0.12)', border: '1px solid rgba(246, 173, 85, 0.4)', borderRadius: 6 }}>
-                  <span style={{ font: '600 10px "JetBrains Mono", monospace', color: '#cbd5e1' }}>LAST MEASUREMENT:</span>
-                  <strong style={{ font: '700 13px "JetBrains Mono", monospace', color: '#f6ad55' }}>
-                    {latestMeasurement.distanceCm.toFixed(1)} cm
-                  </strong>
-                </div>
-              ) : (
-                <div style={{ font: '11px "JetBrains Mono", monospace', color: '#94a3b8' }}>
-                  Click any point on the model surface to anchor Point A.
-                </div>
-              )}
-              {measurements.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4 }}>
-                  <span style={{ font: '10px "JetBrains Mono", monospace', color: '#94a3b8' }}>
-                    {measurements.length} saved dimension{measurements.length === 1 ? '' : 's'}
-                  </span>
+                <div className="hex-glide-controls">
+                  <div className="hex-glide-input-wrap">
+                    <span className="hex-glide-prefix">#</span>
+                    <input
+                      type="text"
+                      className="hex-glide-text-input"
+                      maxLength={6}
+                      value={hexInputText}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9a-fA-F]/g, '');
+                        setHexInputText(val);
+                        if (val.length === 6 || val.length === 3) {
+                          setCustomStudioBg(`#${val}`);
+                        }
+                      }}
+                      aria-label="Hex color value"
+                    />
+                  </div>
+                  <label className="native-color-picker-button" title="Choose custom color">
+                    <span style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: canvasBg }} />
+                    <input
+                      type="color"
+                      value={canvasBg.startsWith('#') && canvasBg.length === 7 ? canvasBg : '#070b14'}
+                      onChange={(e) => {
+                        setCustomStudioBg(e.target.value);
+                        setHexInputText(e.target.value.replace('#', ''));
+                      }}
+                    />
+                  </label>
                   <button
                     type="button"
                     className="playground-top-btn"
-                    style={{ padding: '4px 10px', fontSize: '10px', color: '#f87171', borderColor: 'rgba(248, 113, 113, 0.4)' }}
-                    onClick={() => {
-                      setMeasurements([]);
-                      setCaliperPointA(null);
-                    }}
+                    style={{ padding: '4px 8px', fontSize: '10px' }}
+                    onClick={() => setShowGrid((g) => !g)}
                   >
-                    Clear All
+                    Grid: {showGrid ? 'ON' : 'OFF'}
                   </button>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+
+            {/* Slicing Plane Controls (with 100% full model coverage and Invert toggle) */}
+            {activeTool === 'slicer' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', minWidth: 260 }}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {(['x', 'y', 'z'] as const).map((axis) => (
+                    <button
+                      key={axis}
+                      type="button"
+                      className={`dock-item-btn ${sectionAxis === axis ? 'active' : ''}`}
+                      style={{ flex: 1, justifyContent: 'center', padding: '5px 4px' }}
+                      onClick={() => setSectionAxis(axis)}
+                    >
+                      {axis.toUpperCase()} AXIS
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className={`dock-item-btn ${sectionInverted ? 'active' : ''}`}
+                    style={{ flex: 1.2, justifyContent: 'center', padding: '5px 4px' }}
+                    onClick={() => setSectionInverted((inv) => !inv)}
+                    title="Invert slice direction"
+                  >
+                    ⇄ {sectionInverted ? 'INVERTED' : 'INVERT'}
+                  </button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <input
+                    type="range"
+                    min={-1}
+                    max={1}
+                    step={0.01}
+                    value={sectionOffset}
+                    onChange={(e) => setSectionOffset(parseFloat(e.target.value))}
+                    style={{ flex: 1 }}
+                  />
+                  <output style={{ font: '11px monospace', color: 'var(--accent)', minWidth: 36, textAlign: 'right' }}>
+                    {sectionOffset.toFixed(2)}
+                  </output>
+                  <button
+                    type="button"
+                    className="playground-top-btn"
+                    style={{ padding: '2px 8px', fontSize: '10px' }}
+                    onClick={() => setSectionOffset(0)}
+                    title="Reset slice plane to center"
+                  >
+                    0
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Calipers Measurement Controls with prominent live distance readout */}
+            {activeTool === 'calipers' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', minWidth: 260 }}>
+                {caliperPointA ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(246, 173, 85, 0.15)', border: '1px solid #f6ad55', borderRadius: 6 }}>
+                    <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', backgroundColor: '#f6ad55' }} />
+                    <span style={{ font: '600 11px "JetBrains Mono", monospace', color: '#f6ad55' }}>
+                      POINT A ANCHORED · Click 2nd point
+                    </span>
+                  </div>
+                ) : latestMeasurement ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', background: 'rgba(246, 173, 85, 0.12)', border: '1px solid rgba(246, 173, 85, 0.4)', borderRadius: 6 }}>
+                    <span style={{ font: '600 10px "JetBrains Mono", monospace', color: '#cbd5e1' }}>LAST MEASUREMENT:</span>
+                    <strong style={{ font: '700 13px "JetBrains Mono", monospace', color: '#f6ad55' }}>
+                      {latestMeasurement.distanceCm.toFixed(1)} cm
+                    </strong>
+                  </div>
+                ) : (
+                  <div style={{ font: '11px "JetBrains Mono", monospace', color: '#94a3b8' }}>
+                    Click any point on the model surface to anchor Point A.
+                  </div>
+                )}
+                {measurements.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4 }}>
+                    <span style={{ font: '10px "JetBrains Mono", monospace', color: '#94a3b8' }}>
+                      {measurements.length} saved dimension{measurements.length === 1 ? '' : 's'}
+                    </span>
+                    <button
+                      type="button"
+                      className="playground-top-btn"
+                      style={{ padding: '4px 10px', fontSize: '10px', color: '#f87171', borderColor: 'rgba(248, 113, 113, 0.4)' }}
+                      onClick={() => {
+                        setMeasurements([]);
+                        setCaliperPointA(null);
+                      }}
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </aside>
       )}
 
-      {/* ─── Floating 3D Space Dock (Centered at bottom) ──────────── */}
+      {/* ─── Floating 3D Space Dock (Centered at bottom, touch-scrollable on mobile) ─── */}
       <div className="playground-dock-container">
         <nav className="playground-floating-dock" aria-label="Playground tools dock">
           {/* Segment: Rigs */}
@@ -968,8 +1063,231 @@ export function Playground({
             <IconSlicer />
             <span>Slicer</span>
           </button>
+
+          <span className="dock-separator" aria-hidden="true" />
+
+          {/* Sidebar Toggle Button in Dock */}
+          <button
+            type="button"
+            className={`dock-item-btn ${sidebarOpen ? 'active' : ''}`}
+            onClick={() => setSidebarOpen((s) => !s)}
+            title="Open Tools and Rigs Sidebar"
+          >
+            <span style={{ fontWeight: 700 }}>☰</span>
+            <span>All Tools</span>
+          </button>
         </nav>
       </div>
+
+      {/* ─── Playground Tools Sidebar Drawer (for Mobile & Desktop) ─── */}
+      <div
+        className={`playground-sidebar-backdrop ${sidebarOpen ? 'open' : ''}`}
+        aria-hidden="true"
+        onClick={() => setSidebarOpen(false)}
+      />
+      <aside className={`playground-sidebar ${sidebarOpen ? 'open' : ''}`} aria-label="Tools and Rigs Sidebar">
+        <div className="sidebar-header">
+          <strong><span>✦</span> TOOLS & RIGS</strong>
+          <button
+            type="button"
+            className="sidebar-close-btn"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Close tools sidebar"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="sidebar-content">
+          {/* Interactive Mechanical Rigs */}
+          <div className="sidebar-section">
+            <span className="sidebar-section-title">Interactive Rigs</span>
+            <button
+              type="button"
+              className={`sidebar-tool-card ${activeTool === 'light' ? 'active' : ''}`}
+              onClick={() => {
+                selectTool('light');
+                setConsoleMinimized(false);
+                setSidebarOpen(false);
+              }}
+            >
+              <div className="sidebar-tool-main">
+                <div className="sidebar-tool-icon"><IconSpotlight /></div>
+                <div className="sidebar-tool-text">
+                  <strong>Spotlight Rig</strong>
+                  <span>360° orbit beam & brightness</span>
+                </div>
+              </div>
+              <span className="sidebar-tool-status">{activeTool === 'light' ? 'ACTIVE' : 'SELECT'}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`sidebar-tool-card ${activeTool === 'gimbal' ? 'active' : ''}`}
+              onClick={() => {
+                selectTool('gimbal');
+                setConsoleMinimized(false);
+                setSidebarOpen(false);
+              }}
+            >
+              <div className="sidebar-tool-main">
+                <div className="sidebar-tool-icon"><IconGimbal /></div>
+                <div className="sidebar-tool-text">
+                  <strong>Flight Gimbal</strong>
+                  <span>Dynamic 3D basketball tracking</span>
+                </div>
+              </div>
+              <span className="sidebar-tool-status">{activeTool === 'gimbal' ? 'ACTIVE' : 'SELECT'}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`sidebar-tool-card ${activeTool === 'lift' ? 'active' : ''}`}
+              onClick={() => {
+                selectTool('lift');
+                setConsoleMinimized(false);
+                setSidebarOpen(false);
+              }}
+            >
+              <div className="sidebar-tool-main">
+                <div className="sidebar-tool-icon"><IconLift /></div>
+                <div className="sidebar-tool-text">
+                  <strong>Hydraulic Lift</strong>
+                  <span>Vertical platform pull lever</span>
+                </div>
+              </div>
+              <span className="sidebar-tool-status">{activeTool === 'lift' ? 'ACTIVE' : 'SELECT'}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`sidebar-tool-card ${activeTool === 'scrubber' ? 'active' : ''}`}
+              onClick={() => {
+                selectTool('scrubber');
+                setConsoleMinimized(false);
+                setSidebarOpen(false);
+              }}
+            >
+              <div className="sidebar-tool-main">
+                <div className="sidebar-tool-icon"><IconScrubber /></div>
+                <div className="sidebar-tool-text">
+                  <strong>Time Scrubber</strong>
+                  <span>Exploded assembly timeline</span>
+                </div>
+              </div>
+              <span className="sidebar-tool-status">{activeTool === 'scrubber' ? 'ACTIVE' : 'SELECT'}</span>
+            </button>
+          </div>
+
+          {/* Atmosphere & Studio */}
+          <div className="sidebar-section">
+            <span className="sidebar-section-title">Atmosphere & Lighting</span>
+            <button
+              type="button"
+              className={`sidebar-tool-card ${activeTool === 'studio' ? 'active' : ''}`}
+              onClick={() => {
+                selectTool('studio');
+                setConsoleMinimized(false);
+                setSidebarOpen(false);
+              }}
+            >
+              <div className="sidebar-tool-main">
+                <div className="sidebar-tool-icon"><IconPalette /></div>
+                <div className="sidebar-tool-text">
+                  <strong>Studio Mode</strong>
+                  <span>Backdrop colors & hex palette</span>
+                </div>
+              </div>
+              <span className="sidebar-tool-status">{activeTool === 'studio' ? 'ACTIVE' : 'SELECT'}</span>
+            </button>
+          </div>
+
+          {/* CAD & Measurements */}
+          <div className="sidebar-section">
+            <span className="sidebar-section-title">Inspection & Measurement</span>
+            <button
+              type="button"
+              className={`sidebar-tool-card ${activeTool === 'calipers' ? 'active' : ''}`}
+              onClick={() => {
+                selectTool('calipers');
+                setConsoleMinimized(false);
+                setSidebarOpen(false);
+              }}
+            >
+              <div className="sidebar-tool-main">
+                <div className="sidebar-tool-icon"><IconCalipers /></div>
+                <div className="sidebar-tool-text">
+                  <strong>3D Calipers</strong>
+                  <span>Surface distance measuring</span>
+                </div>
+              </div>
+              <span className="sidebar-tool-status">{activeTool === 'calipers' ? 'ACTIVE' : 'SELECT'}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`sidebar-tool-card ${activeTool === 'slicer' ? 'active' : ''}`}
+              onClick={() => {
+                selectTool('slicer');
+                setConsoleMinimized(false);
+                setSidebarOpen(false);
+              }}
+            >
+              <div className="sidebar-tool-main">
+                <div className="sidebar-tool-icon"><IconSlicer /></div>
+                <div className="sidebar-tool-text">
+                  <strong>Section Slicer</strong>
+                  <span>Clipping plane with invert</span>
+                </div>
+              </div>
+              <span className="sidebar-tool-status">{activeTool === 'slicer' ? 'ACTIVE' : 'SELECT'}</span>
+            </button>
+          </div>
+
+          {/* Quick Scene Actions */}
+          <div className="sidebar-section">
+            <span className="sidebar-section-title">Scene Tools</span>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+              <button
+                type="button"
+                className={`playground-top-btn ${turntable ? 'active' : ''}`}
+                style={{ justifyContent: 'center', padding: '8px 10px' }}
+                onClick={() => setTurntable((t) => !t)}
+              >
+                <IconTurntable />
+                <span>360° Spin</span>
+              </button>
+              <button
+                type="button"
+                className="playground-top-btn"
+                style={{ justifyContent: 'center', padding: '8px 10px' }}
+                onClick={captureStudioSnapshot}
+              >
+                <IconCamera />
+                <span>Snapshot</span>
+              </button>
+              <button
+                type="button"
+                className="playground-top-btn"
+                style={{ justifyContent: 'center', padding: '8px 10px' }}
+                onClick={() => controlsRef.current?.reset()}
+              >
+                <IconReset />
+                <span>Reset [R]</span>
+              </button>
+              <button
+                type="button"
+                className="playground-top-btn"
+                style={{ justifyContent: 'center', padding: '8px 10px' }}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+              >
+                <span>↑ Load GLB</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </aside>
     </main>
   );
 }
