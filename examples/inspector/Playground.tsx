@@ -10,14 +10,12 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { ContactShadows, Html } from '@react-three/drei';
 import { Plane, Vector3 } from 'three';
 import {
-  Annotation,
   BlenderControls,
   Measurement,
   SelectableModel,
   SelectableObject,
   SpatialProvider,
   type JoystickValue,
-  type SpatialPart,
   type SurfaceHit,
 } from 'spatialkit/react';
 import {
@@ -28,7 +26,7 @@ import {
 } from './main';
 import { MODEL_FIT, type ModelAsset } from './model-files';
 import { publicFilename } from './integration';
-import { type Note, annotationOffset } from './notes';
+import type { Note } from './notes';
 import {
   HorizontalMechanicalLever,
   PullLever,
@@ -192,7 +190,12 @@ function PlaygroundDirector({
   return null;
 }
 
-export type PlaygroundDockTab = 'rigs' | 'studio' | 'inspect' | 'showcase';
+export interface StoredMeasurement {
+  id: string;
+  start: [number, number, number];
+  end: [number, number, number];
+  distanceCm: number;
+}
 
 export function Playground({
   model,
@@ -209,18 +212,18 @@ export function Playground({
   uploading: boolean;
   uploadError: string;
   theme: 'light' | 'dark';
-  notes: Note[];
+  notes?: Note[];
 }) {
   const controlsRef = useRef<ComponentRef<typeof BlenderControls>>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Active Tool Dock Segment
-  const [activeDockTab, setActiveDockTab] = useState<PlaygroundDockTab>('rigs');
+  // Active Tool Selection
   const [activeTool, setActiveTool] = useState<string | null>('light');
 
   // Mechanical Rig State
   const [lightDial, setLightDial] = useState(0.72);
+  const [lightBrightness, setLightBrightness] = useState(0.55); // Default in the middle!
   const [targetAim, setTargetAim] = useState<JoystickValue>({ x: 0, y: 0 });
   const [liftHeight, setLiftHeight] = useState(0.35);
   const [animationProgress, setAnimationProgress] = useState(0);
@@ -237,18 +240,34 @@ export function Playground({
   const [shutterFlash, setShutterFlash] = useState(false);
   const [snapshotToast, setSnapshotToast] = useState<string | null>(null);
 
-  // Inspection Tools
+  // Calipers Measurement Tool
   const [measuring, setMeasuring] = useState(false);
   const [caliperPointA, setCaliperPointA] = useState<[number, number, number] | null>(null);
-  const [measurements, setMeasurements] = useState<Array<{ id: string; start: [number, number, number]; end: [number, number, number] }>>([]);
+  const [measurements, setMeasurements] = useState<StoredMeasurement[]>([]);
+
+  // Slicer Cross-Section Tool
   const [crossSectionEnabled, setCrossSectionEnabled] = useState(false);
   const [sectionAxis, setSectionAxis] = useState<'x' | 'y' | 'z'>('y');
   const [sectionOffset, setSectionOffset] = useState(0);
-  const [showAnnotations, setShowAnnotations] = useState(true);
+  const [sectionInverted, setSectionInverted] = useState(false);
+
+  // Tool Selection with strict state isolation (no feature bleeding)
+  function selectTool(toolName: string) {
+    setActiveTool((prev) => {
+      const next = prev === toolName ? null : toolName;
+      setMeasuring(next === 'calipers');
+      if (next !== 'calipers') setCaliperPointA(null);
+      setCrossSectionEnabled(next === 'slicer');
+      return next;
+    });
+  }
 
   const env = ENVIRONMENT_PRESETS[envPreset];
   const defaultBg = envPreset === 'showroom' ? env.bgDark : (theme === 'dark' ? env.bgDark : env.bgLight);
-  const canvasBg = customStudioBg ?? defaultBg;
+
+  // Pitch black dark-room environment for spotlight inspection
+  const isSpotlightMode = activeTool === 'light';
+  const canvasBg = isSpotlightMode ? '#010408' : (customStudioBg ?? defaultBg);
 
   // Derive active model control from selected tool
   const activeModelControl: ActiveModelControl = useMemo(() => {
@@ -259,16 +278,18 @@ export function Playground({
     return 'none';
   }, [activeTool]);
 
-  // Slicing plane
+  // Slicing plane with generous range to clear 100% of the model at +1
   const clippingPlanes = useMemo(() => {
-    if (!crossSectionEnabled) return undefined;
-    const normal = sectionAxis === 'x'
+    if (activeTool !== 'slicer' || !crossSectionEnabled) return undefined;
+    const baseNormal = sectionAxis === 'x'
       ? new Vector3(-1, 0, 0)
       : sectionAxis === 'y'
         ? new Vector3(0, -1, 0)
         : new Vector3(0, 0, -1);
-    return [new Plane(normal, sectionOffset * 2)];
-  }, [crossSectionEnabled, sectionAxis, sectionOffset]);
+    const normal = sectionInverted ? baseNormal.clone().negate() : baseNormal;
+    const constant = (sectionInverted ? -sectionOffset : sectionOffset) * 3.8;
+    return [new Plane(normal, constant)];
+  }, [activeTool, crossSectionEnabled, sectionAxis, sectionOffset, sectionInverted]);
 
   // Target lock-on detection
   const isTargetLocked = Math.hypot(targetAim.x, targetAim.y) < 0.22;
@@ -308,27 +329,40 @@ export function Playground({
         setActiveTool(null);
         setMeasuring(false);
         setCaliperPointA(null);
+        setCrossSectionEnabled(false);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Surface click for measurements
+  // Surface click for measurements in world coordinates
   function handleSurfaceClick(hit: SurfaceHit) {
-    if (measuring) {
-      const worldPos = hit.point.slice() as [number, number, number];
+    if (activeTool === 'calipers') {
+      const worldPos = (hit.worldPoint ?? hit.point).slice() as [number, number, number];
       if (!caliperPointA) {
         setCaliperPointA(worldPos);
       } else {
+        const distM = Math.hypot(
+          worldPos[0] - caliperPointA[0],
+          worldPos[1] - caliperPointA[1],
+          worldPos[2] - caliperPointA[2]
+        );
         setMeasurements((prev) => [
           ...prev,
-          { id: crypto.randomUUID(), start: caliperPointA, end: worldPos },
+          {
+            id: crypto.randomUUID(),
+            start: caliperPointA,
+            end: worldPos,
+            distanceCm: distM * 100,
+          },
         ]);
         setCaliperPointA(null);
       }
     }
   }
+
+  const latestMeasurement = measurements.length > 0 ? measurements[measurements.length - 1] : null;
 
   return (
     <main className="playground-workspace" ref={viewportRef} aria-label="SpatialKit 3D Playground">
@@ -338,7 +372,7 @@ export function Playground({
       <div className="playground-topbar">
         <div className="playground-meta-badge">
           <span className="status-dot" aria-hidden="true" />
-          <strong>{model.name}</strong>
+          <strong>{activeTool === 'gimbal' ? 'Basketball (Gimbal Target)' : model.name}</strong>
           <span style={{ color: '#94a3b8' }}>{model.format}</span>
           <button
             type="button"
@@ -409,9 +443,24 @@ export function Playground({
         </div>
       )}
 
-      {measuring && (
-        <div className="placement-banner caliper-banner" role="status" style={{ top: 70, bottom: 'auto' }}>
-          {caliperPointA ? 'Click second point to finish distance measurement' : 'Click first surface point to start measurement'}
+      {/* Caliper Instruction Banner (Strictly absolute, no layout displacement) */}
+      {activeTool === 'calipers' && (
+        <div
+          className="placement-banner caliper-banner"
+          role="status"
+          style={{
+            position: 'absolute',
+            top: 68,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 48,
+            pointerEvents: 'none',
+            margin: 0,
+          }}
+        >
+          {caliperPointA
+            ? '✦ Point A anchored · Click second point to measure distance'
+            : '✦ Click any point on the model surface to place Point A'}
         </div>
       )}
 
@@ -441,7 +490,7 @@ export function Playground({
             }}
           >
             <span className="bracket-label">
-              {isTargetLocked ? 'ASSEMBLY TARGET [LOCKED]' : 'ASSEMBLY TARGET'}
+              {isTargetLocked ? 'BASKETBALL TARGET [LOCKED]' : 'BASKETBALL TARGET'}
             </span>
             <div className="bracket-corner tl" />
             <div className="bracket-corner tr" />
@@ -474,7 +523,7 @@ export function Playground({
           <div className="hud-bottom-tape">
             <span>AZIMUTH: {(targetAim.x * 45).toFixed(1)}°</span>
             <span>ELEVATION: {(targetAim.y * 30).toFixed(1)}°</span>
-            <span>RANGE: 3.4M</span>
+            <span>TRAJECTORY: DYNAMIC 3D</span>
           </div>
         </div>
       )}
@@ -486,11 +535,11 @@ export function Playground({
         gl={{ localClippingEnabled: true, preserveDrawingBuffer: true }}
       >
         <color attach="background" args={[canvasBg]} />
-        <ambientLight intensity={env.ambient} />
-        <hemisphereLight args={[env.hemiSky, env.hemiGround, env.hemiIntensity]} />
-        <directionalLight position={env.keyPos} intensity={env.keyIntensity} color={env.keyColor} />
-        <directionalLight position={env.fillPos} intensity={env.fillIntensity} color={env.fillColor} />
-        {env.rimPos && (
+        <ambientLight intensity={isSpotlightMode ? 0.02 : env.ambient} />
+        <hemisphereLight args={[env.hemiSky, env.hemiGround, isSpotlightMode ? 0.02 : env.hemiIntensity]} />
+        <directionalLight position={env.keyPos} intensity={isSpotlightMode ? 0.03 : env.keyIntensity} color={env.keyColor} />
+        <directionalLight position={env.fillPos} intensity={isSpotlightMode ? 0.02 : env.fillIntensity} color={env.fillColor} />
+        {env.rimPos && !isSpotlightMode && (
           <directionalLight position={env.rimPos} intensity={env.rimIntensity ?? 1.5} color={env.rimColor ?? '#ffffff'} />
         )}
 
@@ -499,9 +548,18 @@ export function Playground({
             <InteractiveModelRig
               activeControl={activeModelControl}
               lightDial={lightDial}
+              lightBrightness={lightBrightness}
               liftHeight={liftHeight}
             >
-              {model.object ? (
+              {activeTool === 'gimbal' ? (
+                /* Dynamic Target: Basketball flying across 3D space */
+                <SelectableModel
+                  src="/models/basketball.glb"
+                  modelId="basketball"
+                  fit={1.6}
+                  onSurfaceClick={handleSurfaceClick}
+                />
+              ) : model.object ? (
                 <SelectableObject
                   object={model.object}
                   animations={model.animations}
@@ -524,18 +582,8 @@ export function Playground({
               )}
             </InteractiveModelRig>
 
-            {showAnnotations && notes.map((note, i) => (
-              <Annotation
-                key={note.id}
-                target={note.target}
-                label={note.label}
-                point={note.point}
-                offset={annotationOffset(notes, i)}
-                className="model-annotation"
-              />
-            ))}
-
-            {measurements.map((m) => (
+            {/* Calipers 3D Measurements (strictly rendered only when Calipers tool is active) */}
+            {activeTool === 'calipers' && measurements.map((m) => (
               <Measurement
                 key={m.id}
                 start={m.start}
@@ -545,9 +593,9 @@ export function Playground({
               />
             ))}
 
-            {caliperPointA && (
+            {activeTool === 'calipers' && caliperPointA && (
               <mesh position={caliperPointA}>
-                <sphereGeometry args={[0.035, 16, 16]} />
+                <sphereGeometry args={[0.04, 16, 16]} />
                 <meshBasicMaterial color="#f6ad55" depthTest={false} />
               </mesh>
             )}
@@ -555,7 +603,7 @@ export function Playground({
 
           <ContactShadows
             position={[0, -0.012, 0]}
-            opacity={env.shadowOpacity}
+            opacity={isSpotlightMode ? 0.2 : env.shadowOpacity}
             scale={14}
             blur={2.4}
             far={5}
@@ -564,7 +612,7 @@ export function Playground({
           />
         </Suspense>
 
-        {showGrid && env.showGrid && (
+        {showGrid && !isSpotlightMode && env.showGrid && (
           <gridHelper args={[20, 40, env.gridPrimary, env.gridSecondary]} position={[0, -0.025, 0]} />
         )}
 
@@ -580,233 +628,279 @@ export function Playground({
         <PlaygroundDirector turntable={turntable} controlsRef={controlsRef} />
       </Canvas>
 
-      {/* ─── Floating 3D Space Dock & Active Tool Console ──────────── */}
-      <div className="playground-dock-container">
-        {/* Active Tool Console: Emerges smoothly above the dock */}
-        {activeTool && (
-          <div className="playground-active-console" role="region" aria-label="Active Tool Console">
-            <div className="console-header">
-              <div className="console-header-title">
-                <strong>
-                  {activeTool === 'light' && '✦ INSPECTION SPOTLIGHT RIG'}
-                  {activeTool === 'gimbal' && '✦ 3D FLIGHT GIMBAL TRACKER'}
-                  {activeTool === 'lift' && '✦ HYDRAULIC LIFT PLATFORM'}
-                  {activeTool === 'scrubber' && '✦ MECHANICAL SCRUBBER LEVER'}
-                  {activeTool === 'studio' && '✦ STUDIO LIGHTING & BACKDROP'}
-                  {activeTool === 'slicer' && '✦ CROSS-SECTION SLICING PLANE'}
-                  {activeTool === 'calipers' && '✦ 3D CALIPERS MEASUREMENT'}
-                </strong>
-                <span>
-                  {activeTool === 'light' && `ORBIT: ${Math.round(lightDial * 360)}° · INTENSITY: ${Math.round(lightDial * 100)}%`}
-                  {activeTool === 'gimbal' && `AIM: [${(targetAim.x * 100).toFixed(0)}, ${(targetAim.y * 100).toFixed(0)}] · ${isTargetLocked ? 'LOCKED' : 'TRACKING'}`}
-                  {activeTool === 'lift' && `HEIGHT: ${(liftHeight * 1.8).toFixed(2)}m`}
-                  {activeTool === 'scrubber' && `PROGRESS: ${Math.round((model.hasAnimations ? animationProgress : proceduralExplode) * 100)}%`}
-                  {activeTool === 'studio' && `PRESET: ${env.label} · COLOR: ${canvasBg}`}
-                  {activeTool === 'slicer' && `AXIS: ${sectionAxis.toUpperCase()} · OFFSET: ${sectionOffset.toFixed(2)}`}
-                  {activeTool === 'calipers' && `${measurements.length} MEASUREMENT${measurements.length === 1 ? '' : 'S'} SAVED`}
-                </span>
-              </div>
-              <button
-                type="button"
-                className="console-close-btn"
-                onClick={() => {
-                  setActiveTool(null);
-                  setMeasuring(false);
-                  setCaliperPointA(null);
-                }}
-                aria-label="Close active console"
-              >
-                ×
-              </button>
+      {/* ─── Floating Tool Console (Docked to Bottom-Right, model center completely clear!) ─── */}
+      {activeTool && (
+        <aside className="playground-active-console" role="region" aria-label="Active Tool Console">
+          <div className="console-header">
+            <div className="console-header-title">
+              <strong>
+                {activeTool === 'light' && '✦ INSPECTION SPOTLIGHT RIG'}
+                {activeTool === 'gimbal' && '✦ 3D FLIGHT GIMBAL TRACKER'}
+                {activeTool === 'lift' && '✦ HYDRAULIC LIFT PLATFORM'}
+                {activeTool === 'scrubber' && '✦ MECHANICAL SCRUBBER LEVER'}
+                {activeTool === 'studio' && '✦ STUDIO LIGHTING & BACKDROP'}
+                {activeTool === 'slicer' && '✦ CROSS-SECTION SLICING PLANE'}
+                {activeTool === 'calipers' && '✦ 3D CALIPERS MEASUREMENT'}
+              </strong>
+              <span>
+                {activeTool === 'light' && `ORBIT: ${Math.round(lightDial * 360)}° · BRIGHTNESS: ${Math.round(lightBrightness * 100)}%`}
+                {activeTool === 'gimbal' && `AIM: [${(targetAim.x * 100).toFixed(0)}, ${(targetAim.y * 100).toFixed(0)}] · ${isTargetLocked ? 'LOCKED' : 'TRACKING'}`}
+                {activeTool === 'lift' && `HEIGHT: ${(liftHeight * 1.8).toFixed(2)}m`}
+                {activeTool === 'scrubber' && `PROGRESS: ${Math.round((model.hasAnimations ? animationProgress : proceduralExplode) * 100)}%`}
+                {activeTool === 'studio' && `PRESET: ${env.label} · COLOR: ${canvasBg}`}
+                {activeTool === 'slicer' && `AXIS: ${sectionAxis.toUpperCase()} · OFFSET: ${sectionOffset.toFixed(2)}${sectionInverted ? ' (INV)' : ''}`}
+                {activeTool === 'calipers' && (latestMeasurement ? `LAST: ${latestMeasurement.distanceCm.toFixed(1)} cm` : `${measurements.length} SAVED`)}
+              </span>
             </div>
+            <button
+              type="button"
+              className="console-close-btn"
+              onClick={() => {
+                setActiveTool(null);
+                setMeasuring(false);
+                setCaliperPointA(null);
+                setCrossSectionEnabled(false);
+              }}
+              aria-label="Close active console"
+            >
+              ×
+            </button>
+          </div>
 
-            {/* Spotlight Rig Widget */}
-            {activeTool === 'light' && (
+          {/* Spotlight Rig Widget: Orbit dial + vertical space + Brightness lever (starts at 0.55 in middle) */}
+          {activeTool === 'light' && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
               <TactileDial
                 value={lightDial}
                 onChange={setLightDial}
                 size={92}
-                label="ORBIT / LUMENS"
-                formatValue={(v) => `${Math.round(v * 100)}%`}
+                label="BEAM ORBIT"
+                formatValue={(v) => `${Math.round(v * 360)}°`}
                 showGraduations
               />
-            )}
-
-            {/* Flight Gimbal Joystick Widget */}
-            {activeTool === 'gimbal' && (
-              <TactileJoystick
-                value={targetAim}
-                onChange={setTargetAim}
-                size={116}
-                label="FLIGHT GIMBAL"
-              />
-            )}
-
-            {/* Hydraulic Lift Lever Widget */}
-            {activeTool === 'lift' && (
-              <div style={{ height: 130, display: 'flex', alignItems: 'center' }}>
-                <PullLever
-                  value={liftHeight}
-                  onChange={setLiftHeight}
-                  label="PULL LEVER"
-                  unitLabel="m"
-                />
-              </div>
-            )}
-
-            {/* Mechanical Scrubber Lever Widget */}
-            {activeTool === 'scrubber' && (
-              <div style={{ width: 280, padding: '4px 0' }}>
+              <div style={{ width: '100%', height: 1, background: 'rgba(255, 255, 255, 0.08)', margin: '14px 0 10px' }} />
+              <div style={{ width: '100%', padding: '0 4px' }}>
                 <HorizontalMechanicalLever
-                  value={model.hasAnimations ? animationProgress : proceduralExplode}
-                  onChange={model.hasAnimations ? setAnimationProgress : setProceduralExplode}
-                  label={model.hasAnimations ? 'ANIMATION PROGRESS' : 'EXPLODE PROGRESS'}
+                  value={lightBrightness}
+                  onChange={setLightBrightness}
+                  label="BEAM INTENSITY"
                 />
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Studio Lighting & Custom Color Backdrop */}
-            {activeTool === 'studio' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {(Object.keys(ENVIRONMENT_PRESETS) as StudioEnvironmentPreset[]).map((key) => (
-                    <button
-                      key={key}
-                      type="button"
-                      className={`dock-item-btn ${envPreset === key && !customStudioBg ? 'active' : ''}`}
-                      style={{ flex: 1, justifyContent: 'center', padding: '6px 4px', fontSize: '10px' }}
-                      onClick={() => {
-                        setEnvPreset(key);
-                        setCustomStudioBg(null);
-                      }}
-                    >
-                      {ENVIRONMENT_PRESETS[key].label}
-                    </button>
-                  ))}
-                </div>
-                <div className="color-palette-swatches" style={{ justifyContent: 'center' }}>
-                  {['#070b14', '#0f172a', '#1e293b', '#111a2c', '#18181b', '#262626', '#f8fafc', '#e2e8f0', '#fed7aa', '#134e4a', '#312e81'].map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      className={`palette-swatch ${canvasBg.toLowerCase() === c.toLowerCase() ? 'active' : ''}`}
-                      style={{ backgroundColor: c }}
-                      onClick={() => {
-                        setCustomStudioBg(c);
-                        setHexInputText(c.replace('#', ''));
-                      }}
-                      aria-label={`Select color ${c}`}
-                    />
-                  ))}
-                </div>
-                <div className="hex-glide-controls">
-                  <div className="hex-glide-input-wrap">
-                    <span className="hex-glide-prefix">#</span>
-                    <input
-                      type="text"
-                      className="hex-glide-text-input"
-                      maxLength={6}
-                      value={hexInputText}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/[^0-9a-fA-F]/g, '');
-                        setHexInputText(val);
-                        if (val.length === 6 || val.length === 3) {
-                          setCustomStudioBg(`#${val}`);
-                        }
-                      }}
-                      aria-label="Hex color value"
-                    />
-                  </div>
-                  <label className="native-color-picker-button" title="Choose custom color">
-                    <span style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: canvasBg }} />
-                    <input
-                      type="color"
-                      value={canvasBg.startsWith('#') && canvasBg.length === 7 ? canvasBg : '#070b14'}
-                      onChange={(e) => {
-                        setCustomStudioBg(e.target.value);
-                        setHexInputText(e.target.value.replace('#', ''));
-                      }}
-                    />
-                  </label>
+          {/* Flight Gimbal Joystick Widget */}
+          {activeTool === 'gimbal' && (
+            <TactileJoystick
+              value={targetAim}
+              onChange={setTargetAim}
+              size={116}
+              label="FLIGHT GIMBAL"
+            />
+          )}
+
+          {/* Hydraulic Lift Lever Widget with generous padding top & bottom */}
+          {activeTool === 'lift' && (
+            <div style={{ paddingTop: 24, paddingBottom: 24, minHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <PullLever
+                value={liftHeight}
+                onChange={setLiftHeight}
+                label="PULL LEVER"
+                unitLabel="m"
+              />
+            </div>
+          )}
+
+          {/* Mechanical Scrubber Lever Widget */}
+          {activeTool === 'scrubber' && (
+            <div style={{ width: 280, padding: '4px 0' }}>
+              <HorizontalMechanicalLever
+                value={model.hasAnimations ? animationProgress : proceduralExplode}
+                onChange={model.hasAnimations ? setAnimationProgress : setProceduralExplode}
+                label={model.hasAnimations ? 'ANIMATION PROGRESS' : 'EXPLODE PROGRESS'}
+              />
+            </div>
+          )}
+
+          {/* Studio Lighting & Custom Color Backdrop */}
+          {activeTool === 'studio' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {(Object.keys(ENVIRONMENT_PRESETS) as StudioEnvironmentPreset[]).map((key) => (
                   <button
+                    key={key}
                     type="button"
-                    className="playground-top-btn"
-                    style={{ padding: '4px 8px', fontSize: '10px' }}
-                    onClick={() => setShowGrid((g) => !g)}
+                    className={`dock-item-btn ${envPreset === key && !customStudioBg ? 'active' : ''}`}
+                    style={{ flex: 1, justifyContent: 'center', padding: '6px 4px', fontSize: '10px' }}
+                    onClick={() => {
+                      setEnvPreset(key);
+                      setCustomStudioBg(null);
+                    }}
                   >
-                    Grid: {showGrid ? 'ON' : 'OFF'}
+                    {ENVIRONMENT_PRESETS[key].label}
                   </button>
-                </div>
+                ))}
               </div>
-            )}
-
-            {/* Slicing Plane Controls */}
-            {activeTool === 'slicer' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', minWidth: 260 }}>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {(['x', 'y', 'z'] as const).map((axis) => (
-                    <button
-                      key={axis}
-                      type="button"
-                      className={`dock-item-btn ${sectionAxis === axis ? 'active' : ''}`}
-                      style={{ flex: 1, justifyContent: 'center' }}
-                      onClick={() => setSectionAxis(axis)}
-                    >
-                      {axis.toUpperCase()} AXIS
-                    </button>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <input
-                    type="range"
-                    min={-1}
-                    max={1}
-                    step={0.01}
-                    value={sectionOffset}
-                    onChange={(e) => setSectionOffset(parseFloat(e.target.value))}
-                    style={{ flex: 1 }}
+              <div className="color-palette-swatches" style={{ justifyContent: 'center' }}>
+                {['#070b14', '#0f172a', '#1e293b', '#111a2c', '#18181b', '#262626', '#f8fafc', '#e2e8f0', '#fed7aa', '#134e4a', '#312e81'].map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    className={`palette-swatch ${canvasBg.toLowerCase() === c.toLowerCase() ? 'active' : ''}`}
+                    style={{ backgroundColor: c }}
+                    onClick={() => {
+                      setCustomStudioBg(c);
+                      setHexInputText(c.replace('#', ''));
+                    }}
+                    aria-label={`Select color ${c}`}
                   />
-                  <output style={{ font: '10px monospace', color: 'var(--accent)' }}>{sectionOffset.toFixed(2)}</output>
-                  <button
-                    type="button"
-                    className="playground-top-btn"
-                    style={{ padding: '2px 6px', fontSize: '9px' }}
-                    onClick={() => setSectionOffset(0)}
-                  >
-                    0
-                  </button>
-                </div>
+                ))}
               </div>
-            )}
+              <div className="hex-glide-controls">
+                <div className="hex-glide-input-wrap">
+                  <span className="hex-glide-prefix">#</span>
+                  <input
+                    type="text"
+                    className="hex-glide-text-input"
+                    maxLength={6}
+                    value={hexInputText}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9a-fA-F]/g, '');
+                      setHexInputText(val);
+                      if (val.length === 6 || val.length === 3) {
+                        setCustomStudioBg(`#${val}`);
+                      }
+                    }}
+                    aria-label="Hex color value"
+                  />
+                </div>
+                <label className="native-color-picker-button" title="Choose custom color">
+                  <span style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: canvasBg }} />
+                  <input
+                    type="color"
+                    value={canvasBg.startsWith('#') && canvasBg.length === 7 ? canvasBg : '#070b14'}
+                    onChange={(e) => {
+                      setCustomStudioBg(e.target.value);
+                      setHexInputText(e.target.value.replace('#', ''));
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="playground-top-btn"
+                  style={{ padding: '4px 8px', fontSize: '10px' }}
+                  onClick={() => setShowGrid((g) => !g)}
+                >
+                  Grid: {showGrid ? 'ON' : 'OFF'}
+                </button>
+              </div>
+            </div>
+          )}
 
-            {/* Calipers Measurement Controls */}
-            {activeTool === 'calipers' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ font: '11px monospace', color: '#f6ad55' }}>
-                  {measurements.length === 0 ? 'Click surface points to measure' : `${measurements.length} active measurement(s)`}
-                </span>
-                {measurements.length > 0 && (
+          {/* Slicing Plane Controls (with 100% full model coverage and Invert toggle) */}
+          {activeTool === 'slicer' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', minWidth: 270 }}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {(['x', 'y', 'z'] as const).map((axis) => (
+                  <button
+                    key={axis}
+                    type="button"
+                    className={`dock-item-btn ${sectionAxis === axis ? 'active' : ''}`}
+                    style={{ flex: 1, justifyContent: 'center', padding: '5px 4px' }}
+                    onClick={() => setSectionAxis(axis)}
+                  >
+                    {axis.toUpperCase()} AXIS
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className={`dock-item-btn ${sectionInverted ? 'active' : ''}`}
+                  style={{ flex: 1.2, justifyContent: 'center', padding: '5px 4px' }}
+                  onClick={() => setSectionInverted((inv) => !inv)}
+                  title="Invert slice direction"
+                >
+                  ⇄ {sectionInverted ? 'INVERTED' : 'INVERT'}
+                </button>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  type="range"
+                  min={-1}
+                  max={1}
+                  step={0.01}
+                  value={sectionOffset}
+                  onChange={(e) => setSectionOffset(parseFloat(e.target.value))}
+                  style={{ flex: 1 }}
+                />
+                <output style={{ font: '11px monospace', color: 'var(--accent)', minWidth: 36, textAlign: 'right' }}>
+                  {sectionOffset.toFixed(2)}
+                </output>
+                <button
+                  type="button"
+                  className="playground-top-btn"
+                  style={{ padding: '2px 8px', fontSize: '10px' }}
+                  onClick={() => setSectionOffset(0)}
+                  title="Reset slice plane to center"
+                >
+                  0
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Calipers Measurement Controls with prominent live distance readout */}
+          {activeTool === 'calipers' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', minWidth: 260 }}>
+              {caliperPointA ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(246, 173, 85, 0.15)', border: '1px solid #f6ad55', borderRadius: 6 }}>
+                  <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', backgroundColor: '#f6ad55' }} />
+                  <span style={{ font: '600 11px "JetBrains Mono", monospace', color: '#f6ad55' }}>
+                    POINT A ANCHORED · Click 2nd point
+                  </span>
+                </div>
+              ) : latestMeasurement ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', background: 'rgba(246, 173, 85, 0.12)', border: '1px solid rgba(246, 173, 85, 0.4)', borderRadius: 6 }}>
+                  <span style={{ font: '600 10px "JetBrains Mono", monospace', color: '#cbd5e1' }}>LAST MEASUREMENT:</span>
+                  <strong style={{ font: '700 13px "JetBrains Mono", monospace', color: '#f6ad55' }}>
+                    {latestMeasurement.distanceCm.toFixed(1)} cm
+                  </strong>
+                </div>
+              ) : (
+                <div style={{ font: '11px "JetBrains Mono", monospace', color: '#94a3b8' }}>
+                  Click any point on the model surface to anchor Point A.
+                </div>
+              )}
+              {measurements.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4 }}>
+                  <span style={{ font: '10px "JetBrains Mono", monospace', color: '#94a3b8' }}>
+                    {measurements.length} saved dimension{measurements.length === 1 ? '' : 's'}
+                  </span>
                   <button
                     type="button"
                     className="playground-top-btn"
-                    style={{ padding: '4px 8px', fontSize: '10px' }}
-                    onClick={() => setMeasurements([])}
+                    style={{ padding: '4px 10px', fontSize: '10px', color: '#f87171', borderColor: 'rgba(248, 113, 113, 0.4)' }}
+                    onClick={() => {
+                      setMeasurements([]);
+                      setCaliperPointA(null);
+                    }}
                   >
                     Clear All
                   </button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+                </div>
+              )}
+            </div>
+          )}
+        </aside>
+      )}
 
-        {/* ─── The Segmented Floating 3D Space Dock ─── */}
+      {/* ─── Floating 3D Space Dock (Centered at bottom) ──────────── */}
+      <div className="playground-dock-container">
         <nav className="playground-floating-dock" aria-label="Playground tools dock">
           {/* Segment: Rigs */}
           <button
             type="button"
             className={`dock-item-btn ${activeTool === 'light' ? 'active' : ''}`}
-            onClick={() => setActiveTool((t) => (t === 'light' ? null : 'light'))}
+            onClick={() => selectTool('light')}
             title="Inspection Spotlight Rig"
           >
             <IconSpotlight />
@@ -815,7 +909,7 @@ export function Playground({
           <button
             type="button"
             className={`dock-item-btn ${activeTool === 'gimbal' ? 'active' : ''}`}
-            onClick={() => setActiveTool((t) => (t === 'gimbal' ? null : 'gimbal'))}
+            onClick={() => selectTool('gimbal')}
             title="Flight Gimbal Target Lock"
           >
             <IconGimbal />
@@ -824,7 +918,7 @@ export function Playground({
           <button
             type="button"
             className={`dock-item-btn ${activeTool === 'lift' ? 'active' : ''}`}
-            onClick={() => setActiveTool((t) => (t === 'lift' ? null : 'lift'))}
+            onClick={() => selectTool('lift')}
             title="Hydraulic Platform Lift"
           >
             <IconLift />
@@ -833,7 +927,7 @@ export function Playground({
           <button
             type="button"
             className={`dock-item-btn ${activeTool === 'scrubber' ? 'active' : ''}`}
-            onClick={() => setActiveTool((t) => (t === 'scrubber' ? null : 'scrubber'))}
+            onClick={() => selectTool('scrubber')}
             title="Mechanical Scrubber Lever"
           >
             <IconScrubber />
@@ -846,7 +940,7 @@ export function Playground({
           <button
             type="button"
             className={`dock-item-btn ${activeTool === 'studio' ? 'active' : ''}`}
-            onClick={() => setActiveTool((t) => (t === 'studio' ? null : 'studio'))}
+            onClick={() => selectTool('studio')}
             title="Studio Lighting & Custom Backdrop Color"
           >
             <IconPalette />
@@ -859,12 +953,7 @@ export function Playground({
           <button
             type="button"
             className={`dock-item-btn ${activeTool === 'calipers' ? 'active' : ''}`}
-            onClick={() => {
-              const next = activeTool === 'calipers' ? null : 'calipers';
-              setActiveTool(next);
-              setMeasuring(next === 'calipers');
-              setCaliperPointA(null);
-            }}
+            onClick={() => selectTool('calipers')}
             title="3D Calipers Measurement"
           >
             <IconCalipers />
@@ -873,28 +962,11 @@ export function Playground({
           <button
             type="button"
             className={`dock-item-btn ${activeTool === 'slicer' ? 'active' : ''}`}
-            onClick={() => {
-              const next = activeTool === 'slicer' ? null : 'slicer';
-              setActiveTool(next);
-              setCrossSectionEnabled(next === 'slicer');
-            }}
+            onClick={() => selectTool('slicer')}
             title="Cross-Section Slicing Plane"
           >
             <IconSlicer />
             <span>Slicer</span>
-          </button>
-
-          <span className="dock-separator" aria-hidden="true" />
-
-          {/* Segment: Annotations */}
-          <button
-            type="button"
-            className={`dock-item-btn ${showAnnotations ? 'active' : ''}`}
-            onClick={() => setShowAnnotations((s) => !s)}
-            title="Toggle 3D Annotations"
-          >
-            <span style={{ fontSize: '11px', fontWeight: 700 }}>▤</span>
-            <span>Notes</span>
           </button>
         </nav>
       </div>

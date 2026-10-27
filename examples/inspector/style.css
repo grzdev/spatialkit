@@ -1644,7 +1644,7 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
 .nav-view:hover { color: var(--ink); background: var(--surface-2); }
 .nav-view.nav-active { color: var(--ink); background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--border); }
 
-/* ─── Playground Nav Pill with Bouncing Orb ────────────────────────── */
+/* ─── Playground Nav Pill with Natural Physics Bouncing Ball ───────── */
 .nav-playground {
   position: relative;
   overflow: visible !important;
@@ -1655,47 +1655,45 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   position: relative;
   display: inline-flex;
   align-items: center;
+  gap: 6px;
 }
 .playground-arc-orb {
-  position: absolute;
-  width: 5px;
-  height: 5px;
+  display: inline-block;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: #38bdf8;
-  box-shadow: 0 0 6px #38bdf8, 0 0 12px #2dd4bf;
+  background: radial-gradient(circle at 35% 35%, #7dd3fc, #0284c7 70%, #0369a1);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.9), 0 0 14px rgba(45, 212, 191, 0.45);
+  transform-origin: center bottom;
+  animation: natural-ball-bounce 1.35s cubic-bezier(0.28, 0.84, 0.42, 1) infinite;
   pointer-events: none;
-  animation: playground-ball-arc 2.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate;
 }
-@keyframes playground-ball-arc {
+@keyframes natural-ball-bounce {
   0% {
-    left: -4px;
-    top: -3px;
-    transform: scale(0.9);
+    transform: translateY(-13px) scale(0.92, 1.08);
+    animation-timing-function: ease-in;
   }
-  20% {
-    left: 20%;
-    top: -10px;
-    transform: scale(1.15, 0.9);
+  32% {
+    transform: translateY(0) scale(1.35, 0.65); /* impact squash */
+    animation-timing-function: cubic-bezier(0, 0.7, 0.2, 1);
   }
-  40% {
-    left: 45%;
-    top: -2px;
-    transform: scale(1.25, 0.75);
+  48% {
+    transform: translateY(-7px) scale(0.96, 1.04); /* secondary bounce peak */
+    animation-timing-function: ease-in;
   }
-  60% {
-    left: 70%;
-    top: -11px;
-    transform: scale(1.15, 0.9);
+  68% {
+    transform: translateY(0) scale(1.2, 0.8); /* secondary bounce impact */
+    animation-timing-function: cubic-bezier(0, 0.7, 0.2, 1);
   }
   80% {
-    left: 92%;
-    top: -2px;
-    transform: scale(1.2, 0.8);
+    transform: translateY(-2.5px) scale(0.98, 1.02); /* settling bounce */
+    animation-timing-function: ease-in;
+  }
+  92% {
+    transform: translateY(0) scale(1.1, 0.9);
   }
   100% {
-    left: calc(100% + 2px);
-    top: -5px;
-    transform: scale(1);
+    transform: translateY(-13px) scale(0.92, 1.08);
   }
 }
 
@@ -1703,9 +1701,13 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
 .playground-workspace {
   position: relative;
   width: 100%;
-  height: calc(100dvh - 58px);
+  flex: 1;
+  min-height: 0;
+  height: calc(100dvh - var(--topbar-h));
   background: var(--bg);
   overflow: hidden;
+  margin: 0;
+  padding: 0;
 }
 .playground-topbar {
   position: absolute;
@@ -1770,13 +1772,11 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
 /* Floating 3D Space Dock */
 .playground-dock-container {
   position: absolute;
-  bottom: 22px;
+  bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 10px;
   z-index: 50;
   pointer-events: none;
   max-width: calc(100% - 24px);
@@ -1813,41 +1813,64 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   border-radius: 8px;
   background: transparent;
   border: 1px solid transparent;
-  color: #cbd5e1;
+  color: #94a3b8;
   font: 600 11px 'Manrope', sans-serif;
   cursor: pointer;
   transition: all 0.16s ease;
   white-space: nowrap;
 }
+.dock-item-btn svg {
+  color: #94a3b8;
+  stroke: #94a3b8;
+  transition: stroke 0.16s ease, color 0.16s ease;
+}
 .dock-item-btn:hover {
   background: rgba(255, 255, 255, 0.1);
   color: #ffffff;
-  transform: translateY(-1px);
+}
+.dock-item-btn:hover svg {
+  color: #ffffff;
+  stroke: #ffffff;
 }
 .dock-item-btn.active {
-  background: rgba(45, 212, 191, 0.2);
+  background: rgba(45, 212, 191, 0.22);
   border-color: var(--accent);
-  color: var(--accent);
-  box-shadow: 0 4px 12px rgba(45, 212, 191, 0.2);
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(45, 212, 191, 0.25);
+}
+.dock-item-btn.active svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
 }
 
-/* Floating Tool Console */
+/* Floating Tool Console (Docked to Bottom-Right, leaving the 3D Model Center 100% Clear!) */
 .playground-active-console {
+  position: absolute;
+  right: 28px;
+  bottom: 22px;
+  z-index: 55;
   pointer-events: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  padding: 12px 18px;
-  border-radius: 12px;
+  padding: 14px 18px;
+  border-radius: 14px;
   background: rgba(15, 23, 42, 0.95);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border: 1px solid rgba(45, 212, 191, 0.4);
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.8), 0 0 24px rgba(45, 212, 191, 0.18);
   animation: console-slide-up 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  min-width: 270px;
-  max-width: 90vw;
+  min-width: 290px;
+  max-width: 360px;
+}
+@media (max-width: 768px) {
+  .playground-active-console {
+    right: 14px;
+    bottom: 74px;
+    max-width: calc(100% - 28px);
+  }
 }
 @keyframes console-slide-up {
   from { opacity: 0; transform: translateY(10px) scale(0.96); }

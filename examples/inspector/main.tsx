@@ -338,11 +338,13 @@ export type ActiveModelControl = 'none' | 'light' | 'target' | 'lift' | 'scrub';
 export function InteractiveModelRig({
   activeControl,
   lightDial,
+  lightBrightness = 0.55,
   liftHeight,
   children,
 }: {
   activeControl: ActiveModelControl;
   lightDial: number;
+  lightBrightness?: number;
   liftHeight: number;
   children: ReactNode;
 }) {
@@ -351,11 +353,14 @@ export function InteractiveModelRig({
   useFrame(({ clock }) => {
     if (!levitationRef.current) return;
     if (activeControl === 'target') {
-      const t = clock.getElapsedTime();
-      levitationRef.current.position.y = Math.sin(t * 1.8) * 0.15;
-      levitationRef.current.position.x = Math.cos(t * 1.2) * 0.14;
-      levitationRef.current.rotation.y = Math.sin(t * 0.8) * 0.08;
-      levitationRef.current.rotation.z = Math.sin(t * 1.3) * 0.03;
+      const t = clock.getElapsedTime() * 1.35;
+      // High-mobility dynamic 3D flight across space (top corners, close, deep, floor)
+      levitationRef.current.position.x = Math.sin(t * 0.95) * 3.4 + Math.cos(t * 2.2) * 1.2;
+      levitationRef.current.position.y = 2.0 + Math.sin(t * 1.5) * 1.6 + Math.cos(t * 0.7) * 0.8;
+      levitationRef.current.position.z = Math.cos(t * 0.85) * 2.6 + Math.sin(t * 1.8) * 1.2;
+      levitationRef.current.rotation.x = t * 2.4;
+      levitationRef.current.rotation.y = t * 3.1;
+      levitationRef.current.rotation.z = Math.sin(t * 1.3) * 1.4;
     } else if (activeControl === 'lift') {
       const targetY = (liftHeight - 0.35) * 1.8;
       levitationRef.current.position.y += (targetY - levitationRef.current.position.y) * 0.18;
@@ -383,14 +388,14 @@ export function InteractiveModelRig({
           <spotLight
             position={lightPos}
             target-position={[0, 0.8, 0]}
-            intensity={lightDial * 16 + 2}
-            angle={0.68}
-            penumbra={0.45}
-            color="#fffbeb"
+            intensity={Math.pow(lightBrightness, 1.5) * 160 + 20}
+            angle={0.72}
+            penumbra={0.32}
+            color="#fffdf0"
             castShadow
           />
           {/* Specular highlight point orb */}
-          <pointLight position={lightPos} intensity={lightDial * 8 + 1} distance={9} color="#fef08a" />
+          <pointLight position={lightPos} intensity={Math.pow(lightBrightness, 1.4) * 45 + 5} distance={12} color="#fef08a" />
           {/* Visual overhead bulb fixture */}
           <mesh position={lightPos}>
             <sphereGeometry args={[0.09, 16, 16]} />
@@ -769,7 +774,7 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
 
   function handleSurfaceClick(hit: SurfaceHit) {
     if (measuring) {
-      const worldPos = hit.point.slice() as [number, number, number];
+      const worldPos = (hit.worldPoint ?? hit.point).slice() as [number, number, number];
       if (!caliperPointA) {
         setCaliperPointA(worldPos);
       } else {

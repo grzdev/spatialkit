@@ -33,6 +33,8 @@ export interface SurfaceHit {
   part: SpatialPart;
   /** Position relative to the hit mesh, stable while the asset hierarchy is unchanged. */
   point: [number, number, number];
+  /** Position in 3D world coordinates [x, y, z]. */
+  worldPoint?: [number, number, number];
 }
 
 /** Suspense-compatible glTF loader with mesh selection and instance-owned highlighting. */
@@ -157,17 +159,24 @@ export function SelectableObject({
     return () => restore.forEach((reset) => reset());
   }, [instance, selectedPart, hovered, highlightColor]);
 
-  // Apply clipping planes to instance materials
+  // Apply clipping planes to instance materials with full cleanup on toggle
   useEffect(() => {
-    if (!clippingPlanes) return;
-    const planesArray = Array.from(clippingPlanes);
+    const planesArray = clippingPlanes && clippingPlanes.length > 0 ? Array.from(clippingPlanes) : null;
     for (const { object } of instance.records) {
       for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
-        material.clippingPlanes = planesArray.length > 0 ? planesArray : null;
-        material.clipShadows = true;
+        material.clippingPlanes = planesArray;
+        material.clipShadows = Boolean(planesArray);
         material.needsUpdate = true;
       }
     }
+    return () => {
+      for (const { object } of instance.records) {
+        for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+          material.clippingPlanes = null;
+          material.needsUpdate = true;
+        }
+      }
+    };
   }, [instance, clippingPlanes]);
 
   const hitId = (event: ThreeEvent<PointerEvent | MouseEvent>) => instance.records.find((record) => record.object === event.object)?.part.id;
@@ -177,13 +186,17 @@ export function SelectableObject({
       onPointerOver={(event: ThreeEvent<PointerEvent>) => { event.stopPropagation(); setHovered(hitId(event) ?? null); }}
       onPointerOut={() => setHovered(null)}
       onClick={(event: ThreeEvent<MouseEvent>) => {
-        if (event.delta > 5) return;
+        if (event.delta > 7) return;
         event.stopPropagation();
         const record = instance.records.find((candidate) => candidate.object === event.object);
         if (record) {
           select(record.part.id);
           const point = event.object.worldToLocal(event.point.clone());
-          onSurfaceClick?.({ part: record.part, point: [point.x, point.y, point.z] });
+          onSurfaceClick?.({
+            part: record.part,
+            point: [point.x, point.y, point.z],
+            worldPoint: [event.point.x, event.point.y, event.point.z],
+          });
         }
       }}
     />
