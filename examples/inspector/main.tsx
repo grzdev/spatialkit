@@ -341,43 +341,58 @@ export function InteractiveModelRig({
   lightDial,
   lightBrightness = 0.55,
   liftHeight,
+  ballPositionRef,
   children,
 }: {
   activeControl: ActiveModelControl;
   lightDial: number;
   lightBrightness?: number;
   liftHeight: number;
+  ballPositionRef?: React.MutableRefObject<Vector3>;
   children: ReactNode;
 }) {
   const levitationRef = useRef<Group>(null);
+  const pistonRef = useRef<Mesh>(null);
 
   useFrame(({ clock }) => {
     if (!levitationRef.current) return;
     if (activeControl === 'target') {
       const t = clock.getElapsedTime() * 1.35;
       // High-mobility dynamic 3D flight across space (top corners, close, deep, floor)
-      levitationRef.current.position.x = Math.sin(t * 0.95) * 3.4 + Math.cos(t * 2.2) * 1.2;
-      levitationRef.current.position.y = 2.0 + Math.sin(t * 1.5) * 1.6 + Math.cos(t * 0.7) * 0.8;
-      levitationRef.current.position.z = Math.cos(t * 0.85) * 2.6 + Math.sin(t * 1.8) * 1.2;
-      levitationRef.current.rotation.x = t * 2.4;
-      levitationRef.current.rotation.y = t * 3.1;
-      levitationRef.current.rotation.z = Math.sin(t * 1.3) * 1.4;
+      const bx = Math.sin(t * 0.95) * 3.4 + Math.cos(t * 2.2) * 1.2;
+      const by = 2.0 + Math.sin(t * 1.5) * 1.6 + Math.cos(t * 0.7) * 0.8;
+      const bz = Math.cos(t * 0.85) * 2.6 + Math.sin(t * 1.8) * 1.2;
+      levitationRef.current.position.set(bx, by, bz);
+      levitationRef.current.rotation.set(t * 2.4, t * 3.1, Math.sin(t * 1.3) * 1.4);
+      if (ballPositionRef) {
+        ballPositionRef.current.set(bx, by, bz);
+      }
     } else if (activeControl === 'lift') {
-      const targetY = (liftHeight - 0.35) * 1.8;
+      // Minimum height rests flat on 3D grid line (y = 0.08), maximum extends up to 3.4m high!
+      const targetY = 0.08 + liftHeight * 3.4;
       levitationRef.current.position.y += (targetY - levitationRef.current.position.y) * 0.18;
       levitationRef.current.position.x = 0;
+      levitationRef.current.position.z = 0;
       levitationRef.current.rotation.set(0, 0, 0);
+
+      // Dynamically stretch telescoping piston between ground base and the moving table
+      if (pistonRef.current) {
+        const curY = levitationRef.current.position.y;
+        pistonRef.current.position.y = (0.08 + curY) / 2;
+        pistonRef.current.scale.set(1, Math.max(0.01, curY - 0.08), 1);
+      }
     } else {
       levitationRef.current.position.set(0, 0, 0);
       levitationRef.current.rotation.set(0, 0, 0);
     }
   });
 
-  const lightAngle = lightDial * Math.PI * 2;
+  // When lightDial is 1.0 (all the way to the right), light shines directly at the front face of the model!
+  const lightAngle = (lightDial - 0.875) * Math.PI * 2;
   const lightRadius = 3.2;
   const lightPos: [number, number, number] = [
     Math.sin(lightAngle) * lightRadius,
-    2.7,
+    2.6,
     Math.cos(lightAngle) * lightRadius,
   ];
 
@@ -411,27 +426,27 @@ export function InteractiveModelRig({
 
       {activeControl === 'lift' && (
         <group position={[0, 0, 0]}>
-          {/* Hydraulic base cylinder */}
-          <mesh position={[0, 0.08, 0]}>
-            <cylinderGeometry args={[0.6, 0.7, 0.16, 32]} />
-            <meshStandardMaterial color="#1e293b" metalness={0.85} roughness={0.25} />
+          {/* Ground level heavy industrial base ring (rests directly on 3D grid line at y = 0) */}
+          <mesh position={[0, 0.04, 0]}>
+            <cylinderGeometry args={[0.75, 0.9, 0.08, 36]} />
+            <meshStandardMaterial color="#0f172a" metalness={0.9} roughness={0.25} />
           </mesh>
-          {/* Telescoping piston */}
-          <mesh position={[0, Math.max(0.01, (liftHeight - 0.35) * 1.8) / 2 + 0.08, 0]}>
-            <cylinderGeometry
-              args={[0.22, 0.22, Math.max(0.01, (liftHeight - 0.35) * 1.8 + 0.16), 32]}
-            />
-            <meshStandardMaterial color="#94a3b8" metalness={0.95} roughness={0.1} />
-          </mesh>
-          {/* Lift table plate right under model */}
-          <mesh position={[0, (liftHeight - 0.35) * 1.8, 0]}>
-            <cylinderGeometry args={[1.5, 1.5, 0.06, 32]} />
-            <meshStandardMaterial color="#0f172a" metalness={0.7} roughness={0.4} />
+          {/* Telescoping hydraulic chrome piston connecting ground to moving table */}
+          <mesh ref={pistonRef} position={[0, 0.08, 0]}>
+            <cylinderGeometry args={[0.26, 0.26, 1, 32]} />
+            <meshStandardMaterial color="#cbd5e1" metalness={0.98} roughness={0.08} />
           </mesh>
         </group>
       )}
 
+      {/* Model & Lift Table share levitationRef: Model rests 100% on the table plate at all times */}
       <group ref={levitationRef}>
+        {activeControl === 'lift' && (
+          <mesh position={[0, -0.03, 0]}>
+            <cylinderGeometry args={[1.85, 1.85, 0.06, 40]} />
+            <meshStandardMaterial color="#1e293b" metalness={0.85} roughness={0.2} />
+          </mesh>
+        )}
         {children}
       </group>
     </>
@@ -834,8 +849,10 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
             onClick={() => switchView('playground')}
           >
             <span className="playground-text-wrap">
-              Playground
-              <span className="playground-arc-orb" aria-hidden="true" />
+              {'Playground'.split('').map((char, i) => (
+                <span key={i} className="letter-char">{char}</span>
+              ))}
+              <span className="playground-letter-orb" aria-hidden="true" />
             </span>
           </button>
           <button
@@ -1193,7 +1210,7 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
               maxDistance={24}
               enableDamping
             />
-            <ResponsiveCameraFraming controlsRef={controls} basePosition={[5.1, 3.7, 5.4]} target={[0, 0.9, 0]} />
+            <ResponsiveCameraFraming controlsRef={controls} basePosition={[4.8, 2.6, 5.0]} target={[0, 1.15, 0]} />
             <ViewportDirector
               turntable={turntable}
               focusRequest={focusRequest}

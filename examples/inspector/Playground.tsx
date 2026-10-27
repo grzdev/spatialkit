@@ -161,29 +161,30 @@ export function IconNotes() {
   );
 }
 
-// ─── Responsive Camera Framing: Automatically Fits Full Model on Mobile ─────
+// ─── Responsive Camera Framing: Centers Model by Default on Desktop, Laptop & Mobile ──
 export function ResponsiveCameraFraming({
   controlsRef,
-  basePosition = [4.8, 3.4, 5.2],
-  target = [0, 0.9, 0],
+  basePosition = [4.6, 2.5, 4.8],
+  target = [0, 1.15, 0],
 }: {
   controlsRef?: React.RefObject<ComponentRef<typeof BlenderControls> | null>;
   basePosition?: [number, number, number];
   target?: [number, number, number];
 }) {
   const { camera, size } = useThree();
-  const prevAspectRef = useRef<number>(0);
+  const prevKeyRef = useRef<string>('');
 
   useEffect(() => {
     const aspect = size.width / Math.max(1, size.height);
-    if (Math.abs(aspect - prevAspectRef.current) < 0.04) return;
-    prevAspectRef.current = aspect;
+    const key = `${aspect.toFixed(2)}-${basePosition.join(',')}-${target.join(',')}`;
+    if (key === prevKeyRef.current) return;
+    prevKeyRef.current = key;
 
     const vTarget = new Vector3(...target);
     const vBase = new Vector3(...basePosition);
     const vOffset = vBase.clone().sub(vTarget);
 
-    // On mobile / portrait screens (aspect < 1.3), pull the camera back so the full model fits horizontally
+    // On mobile / portrait screens (aspect < 1.3), pull camera distance back so full model fits horizontally
     const factor = aspect < 1.3 ? Math.min(2.35, Math.max(1.15, 1.48 / aspect)) : 1.0;
     const newPos = vTarget.clone().add(vOffset.multiplyScalar(factor));
 
@@ -199,6 +200,25 @@ export function ResponsiveCameraFraming({
     }
   }, [size.width, size.height, camera, controlsRef, basePosition, target]);
 
+  return null;
+}
+
+// ─── Real-Time 3D -> Screen Projection Tracker for Gimbal Basketball ────────
+function GimbalTracker({
+  ballPosRef,
+  onScreenUpdate,
+}: {
+  ballPosRef: React.MutableRefObject<Vector3>;
+  onScreenUpdate: (pos: { x: number; y: number; inFrustum: boolean }) => void;
+}) {
+  const { camera } = useThree();
+  useFrame(() => {
+    const v = ballPosRef.current.clone();
+    v.project(camera);
+    const screenX = (v.x * 0.5 + 0.5) * 100;
+    const screenY = (-v.y * 0.5 + 0.5) * 100;
+    onScreenUpdate({ x: screenX, y: screenY, inFrustum: v.z < 1 });
+  });
   return null;
 }
 
@@ -265,10 +285,14 @@ export function Playground({
   const [consoleMinimized, setConsoleMinimized] = useState(false);
 
   // Mechanical Rig State
-  const [lightDial, setLightDial] = useState(0.72);
+  // Default lightDial to 1.0 (all the way to the right) so light shines straight at front face of the model!
+  const [lightDial, setLightDial] = useState(1.0);
   const [lightBrightness, setLightBrightness] = useState(0.55); // Default in the middle!
   const [targetAim, setTargetAim] = useState<JoystickValue>({ x: 0, y: 0 });
-  const [liftHeight, setLiftHeight] = useState(0.35);
+  const ballPositionRef = useRef(new Vector3(0, 2, 0));
+  const [ballScreenPos, setBallScreenPos] = useState({ x: 50, y: 50, inFrustum: true });
+
+  const [liftHeight, setLiftHeight] = useState(0.0); // Minimum height rests on 3D grid line!
   const [animationProgress, setAnimationProgress] = useState(0);
   const [proceduralExplode, setProceduralExplode] = useState(0);
 
@@ -288,11 +312,10 @@ export function Playground({
   const [caliperPointA, setCaliperPointA] = useState<[number, number, number] | null>(null);
   const [measurements, setMeasurements] = useState<StoredMeasurement[]>([]);
 
-  // Slicer Cross-Section Tool
+  // Slicer Cross-Section Tool: Defaults to 1.00 so full model is 100% visible by default!
   const [crossSectionEnabled, setCrossSectionEnabled] = useState(false);
   const [sectionAxis, setSectionAxis] = useState<'x' | 'y' | 'z'>('y');
-  const [sectionOffset, setSectionOffset] = useState(0);
-  const [sectionInverted, setSectionInverted] = useState(false);
+  const [sectionOffset, setSectionOffset] = useState(1.0);
 
   // Tool Selection with strict state isolation (no feature bleeding)
   function selectTool(toolName: string) {
@@ -321,23 +344,24 @@ export function Playground({
     return 'none';
   }, [activeTool]);
 
-  // Slicing plane with generous range to clear 100% of the model at +1
+  // Slicing plane: 1.00 = 100% visible, progressively cuts through as dragged down to -1.00
   const clippingPlanes = useMemo(() => {
     if (activeTool !== 'slicer' || !crossSectionEnabled) return undefined;
-    const baseNormal = sectionAxis === 'x'
-      ? new Vector3(-1, 0, 0)
-      : sectionAxis === 'y'
-        ? new Vector3(0, -1, 0)
-        : new Vector3(0, 0, -1);
-    const normal = sectionInverted ? baseNormal.clone().negate() : baseNormal;
-    const constant = (sectionInverted ? -sectionOffset : sectionOffset) * 3.8;
+    if (sectionAxis === 'y') {
+      const normal = new Vector3(0, -1, 0);
+      const constant = (sectionOffset + 1.0) * 1.4;
+      return [new Plane(normal, constant)];
+    }
+    const normal = sectionAxis === 'x' ? new Vector3(-1, 0, 0) : new Vector3(0, 0, -1);
+    const constant = sectionOffset * 2.2 + 0.2;
     return [new Plane(normal, constant)];
-  }, [activeTool, crossSectionEnabled, sectionAxis, sectionOffset, sectionInverted]);
+  }, [activeTool, crossSectionEnabled, sectionAxis, sectionOffset]);
 
-  // Target lock-on detection
-  const isTargetLocked = Math.hypot(targetAim.x, targetAim.y) < 0.22;
-  const aimXPercent = 50 + targetAim.x * 35;
-  const aimYPercent = 50 - targetAim.y * 35;
+  // Target lock-on detection: reticle aims at the real floating ball position on screen
+  const aimXPercent = 50 + targetAim.x * 38;
+  const aimYPercent = 50 - targetAim.y * 38;
+  const distanceToTarget = Math.hypot(aimXPercent - ballScreenPos.x, aimYPercent - ballScreenPos.y);
+  const isTargetLocked = distanceToTarget < 9.5;
 
   function captureStudioSnapshot() {
     const canvas = viewportRef.current?.querySelector('canvas');
@@ -521,29 +545,31 @@ export function Playground({
         </div>
       )}
 
-      {/* ─── Tactical Gimbal HUD Overlay (when Flight Gimbal active) ─── */}
+      {/* ─── Tactical Gimbal HUD Overlay (Tracks floating basketball in real time!) ─── */}
       {activeModelControl === 'target' && (
         <div className="target-hud-overlay" aria-hidden="true">
           <div className="hud-top-tape">
             <span className="tape-heading">✦ GIMBAL LOCK-ON SYSTEM</span>
             <span>AIM: [{(targetAim.x * 100).toFixed(0)}, {(targetAim.y * 100).toFixed(0)}]</span>
             <span className={`hud-status-badge ${isTargetLocked ? 'locked' : ''}`}>
-              {isTargetLocked ? '● TARGET LOCKED' : '○ ACQUIRING'}
+              {isTargetLocked ? '● TARGET LOCKED' : '○ ACQUIRING TARGET'}
             </span>
           </div>
 
+          {/* Real-time tracking bracket following the moving basketball across the 3D screen */}
           <div
             className={`hud-target-bracket ${isTargetLocked ? 'is-locked' : ''}`}
             style={{
               position: 'absolute',
-              left: '50%',
-              top: '50%',
+              left: `${ballScreenPos.x}%`,
+              top: `${ballScreenPos.y}%`,
               transform: 'translate(-50%, -50%)',
-              width: 140,
-              height: 140,
+              width: 130,
+              height: 130,
               pointerEvents: 'none',
               border: `1.5px dashed ${isTargetLocked ? '#10b981' : '#f59e0b'}`,
               borderRadius: 8,
+              transition: 'border-color 0.15s ease',
             }}
           >
             <span className="bracket-label">
@@ -555,6 +581,7 @@ export function Playground({
             <div className="bracket-corner br" />
           </div>
 
+          {/* Crosshair reticle driven by user's joystick */}
           <div
             className="hud-reticle-movable"
             style={{
@@ -588,7 +615,7 @@ export function Playground({
       {/* ─── 3D Canvas with Responsive Camera Framing for Mobile & Desktop ─── */}
       <Canvas
         dpr={[1, 2]}
-        camera={{ position: [4.8, 3.4, 5.2], fov: 40 }}
+        camera={{ position: [4.6, 2.5, 4.8], fov: 40 }}
         gl={{ localClippingEnabled: true, preserveDrawingBuffer: true }}
       >
         <color attach="background" args={[canvasBg]} />
@@ -607,6 +634,7 @@ export function Playground({
               lightDial={lightDial}
               lightBrightness={lightBrightness}
               liftHeight={liftHeight}
+              ballPositionRef={ballPositionRef}
             >
               {activeTool === 'gimbal' ? (
                 /* Dynamic Target: Basketball flying across 3D space */
@@ -631,6 +659,7 @@ export function Playground({
                 <SelectableModel
                   src="/pump.glb"
                   modelId="pump"
+                  fit={MODEL_FIT}
                   animationProgress={animationProgress}
                   explode={proceduralExplode}
                   clippingPlanes={clippingPlanes}
@@ -676,14 +705,22 @@ export function Playground({
         <BlenderControls
           ref={controlsRef}
           makeDefault
-          target={[0, 0.9, 0]}
+          target={activeTool === 'gimbal' ? [0, 1.8, 0] : [0, 1.15, 0]}
           minDistance={1.8}
-          maxDistance={24}
+          maxDistance={28}
           enableDamping
         />
 
-        {/* Responsive camera director: pulls back camera on mobile/portrait so entire model is framed */}
-        <ResponsiveCameraFraming controlsRef={controlsRef} basePosition={[4.8, 3.4, 5.2]} target={[0, 0.9, 0]} />
+        {/* Responsive camera director: centered vertically by default, and zoomed way out in Gimbal mode */}
+        <ResponsiveCameraFraming
+          controlsRef={controlsRef}
+          basePosition={activeTool === 'gimbal' ? [7.8, 5.2, 8.8] : [4.6, 2.5, 4.8]}
+          target={activeTool === 'gimbal' ? [0, 1.8, 0] : [0, 1.15, 0]}
+        />
+
+        {activeTool === 'gimbal' && (
+          <GimbalTracker ballPosRef={ballPositionRef} onScreenUpdate={setBallScreenPos} />
+        )}
 
         <PlaygroundDirector turntable={turntable} controlsRef={controlsRef} />
       </Canvas>
@@ -719,10 +756,10 @@ export function Playground({
               <span>
                 {activeTool === 'light' && `ORBIT: ${Math.round(lightDial * 360)}° · BRIGHTNESS: ${Math.round(lightBrightness * 100)}%`}
                 {activeTool === 'gimbal' && `AIM: [${(targetAim.x * 100).toFixed(0)}, ${(targetAim.y * 100).toFixed(0)}] · ${isTargetLocked ? 'LOCKED' : 'TRACKING'}`}
-                {activeTool === 'lift' && `HEIGHT: ${(liftHeight * 1.8).toFixed(2)}m`}
+                {activeTool === 'lift' && `HEIGHT: ${(0.08 + liftHeight * 3.4).toFixed(2)}m`}
                 {activeTool === 'scrubber' && `PROGRESS: ${Math.round((model.hasAnimations ? animationProgress : proceduralExplode) * 100)}%`}
                 {activeTool === 'studio' && `PRESET: ${env.label} · COLOR: ${canvasBg}`}
-                {activeTool === 'slicer' && `AXIS: ${sectionAxis.toUpperCase()} · OFFSET: ${sectionOffset.toFixed(2)}${sectionInverted ? ' (INV)' : ''}`}
+                {activeTool === 'slicer' && `AXIS: ${sectionAxis.toUpperCase()} · OFFSET: ${sectionOffset.toFixed(2)}`}
                 {activeTool === 'calipers' && (latestMeasurement ? `LAST: ${latestMeasurement.distanceCm.toFixed(1)} cm` : `${measurements.length} SAVED`)}
               </span>
             </div>
@@ -891,7 +928,7 @@ export function Playground({
               </div>
             )}
 
-            {/* Slicing Plane Controls (with 100% full model coverage and Invert toggle) */}
+            {/* Slicing Plane Controls (starts at 1.00, 100% visible, smoothly cuts down) */}
             {activeTool === 'slicer' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', minWidth: 260 }}>
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -900,21 +937,12 @@ export function Playground({
                       key={axis}
                       type="button"
                       className={`dock-item-btn ${sectionAxis === axis ? 'active' : ''}`}
-                      style={{ flex: 1, justifyContent: 'center', padding: '5px 4px' }}
+                      style={{ flex: 1, justifyContent: 'center', padding: '6px 4px' }}
                       onClick={() => setSectionAxis(axis)}
                     >
                       {axis.toUpperCase()} AXIS
                     </button>
                   ))}
-                  <button
-                    type="button"
-                    className={`dock-item-btn ${sectionInverted ? 'active' : ''}`}
-                    style={{ flex: 1.2, justifyContent: 'center', padding: '5px 4px' }}
-                    onClick={() => setSectionInverted((inv) => !inv)}
-                    title="Invert slice direction"
-                  >
-                    ⇄ {sectionInverted ? 'INVERTED' : 'INVERT'}
-                  </button>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <input
@@ -933,10 +961,10 @@ export function Playground({
                     type="button"
                     className="playground-top-btn"
                     style={{ padding: '2px 8px', fontSize: '10px' }}
-                    onClick={() => setSectionOffset(0)}
-                    title="Reset slice plane to center"
+                    onClick={() => setSectionOffset(1.0)}
+                    title="Reset to 1.00 (100% visible)"
                   >
-                    0
+                    1.0
                   </button>
                 </div>
               </div>
@@ -1062,19 +1090,6 @@ export function Playground({
           >
             <IconSlicer />
             <span>Slicer</span>
-          </button>
-
-          <span className="dock-separator" aria-hidden="true" />
-
-          {/* Sidebar Toggle Button in Dock */}
-          <button
-            type="button"
-            className={`dock-item-btn ${sidebarOpen ? 'active' : ''}`}
-            onClick={() => setSidebarOpen((s) => !s)}
-            title="Open Tools and Rigs Sidebar"
-          >
-            <span style={{ fontWeight: 700 }}>☰</span>
-            <span>All Tools</span>
           </button>
         </nav>
       </div>
@@ -1237,7 +1252,7 @@ export function Playground({
                 <div className="sidebar-tool-icon"><IconSlicer /></div>
                 <div className="sidebar-tool-text">
                   <strong>Section Slicer</strong>
-                  <span>Clipping plane with invert</span>
+                  <span>Clipping plane with full range</span>
                 </div>
               </div>
               <span className="sidebar-tool-status">{activeTool === 'slicer' ? 'ACTIVE' : 'SELECT'}</span>

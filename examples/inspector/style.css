@@ -1666,7 +1666,7 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
 .nav-view:hover { color: var(--ink); background: var(--surface-2); }
 .nav-view.nav-active { color: var(--ink); background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--border); }
 
-/* ─── Playground Nav Pill with Natural Physics Bouncing Ball ───────── */
+/* ─── Playground Nav Pill with Ball Bouncing on Each Letter ────────── */
 .nav-playground {
   position: relative;
   overflow: visible !important;
@@ -1677,46 +1677,78 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  letter-spacing: 0.3px;
 }
-.playground-arc-orb {
+.letter-char {
   display: inline-block;
-  width: 7px;
-  height: 7px;
+  position: relative;
+  transition: transform 0.1s ease;
+}
+.playground-letter-orb {
+  position: absolute;
+  left: 3px;
+  top: -1px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 35%, #7dd3fc, #0284c7 70%, #0369a1);
-  box-shadow: 0 0 8px rgba(56, 189, 248, 0.9), 0 0 14px rgba(45, 212, 191, 0.45);
+  box-shadow: 0 0 7px rgba(56, 189, 248, 0.95), 0 0 12px rgba(45, 212, 191, 0.5);
   transform-origin: center bottom;
-  animation: natural-ball-bounce 1.35s cubic-bezier(0.28, 0.84, 0.42, 1) infinite;
+  animation: bounce-across-letters 3.2s cubic-bezier(0.28, 0.84, 0.42, 1) infinite;
   pointer-events: none;
 }
-@keyframes natural-ball-bounce {
-  0% {
-    transform: translateY(-13px) scale(0.92, 1.08);
-    animation-timing-function: ease-in;
-  }
-  32% {
-    transform: translateY(0) scale(1.35, 0.65); /* impact squash */
-    animation-timing-function: cubic-bezier(0, 0.7, 0.2, 1);
-  }
-  48% {
-    transform: translateY(-7px) scale(0.96, 1.04); /* secondary bounce peak */
-    animation-timing-function: ease-in;
-  }
-  68% {
-    transform: translateY(0) scale(1.2, 0.8); /* secondary bounce impact */
-    animation-timing-function: cubic-bezier(0, 0.7, 0.2, 1);
-  }
-  80% {
-    transform: translateY(-2.5px) scale(0.98, 1.02); /* settling bounce */
-    animation-timing-function: ease-in;
-  }
-  92% {
-    transform: translateY(0) scale(1.1, 0.9);
-  }
-  100% {
-    transform: translateY(-13px) scale(0.92, 1.08);
-  }
+
+@keyframes bounce-across-letters {
+  /* 0% P apex */
+  0% { left: 4px; top: -11px; transform: scale(0.9, 1.1); animation-timing-function: ease-in; }
+  /* P impact */
+  3.5% { left: 4px; top: -1px; transform: scale(1.35, 0.65); animation-timing-function: ease-out; }
+  /* hop to l */
+  7% { left: 8px; top: -10px; transform: scale(0.95, 1.05); animation-timing-function: ease-in; }
+  10.5% { left: 11px; top: -1px; transform: scale(1.35, 0.65); animation-timing-function: ease-out; }
+  /* hop to a */
+  14% { left: 15px; top: -10px; transform: scale(0.95, 1.05); animation-timing-function: ease-in; }
+  17.5% { left: 18px; top: -1px; transform: scale(1.35, 0.65); animation-timing-function: ease-out; }
+  /* hop to y */
+  21% { left: 22px; top: -10px; transform: scale(0.95, 1.05); animation-timing-function: ease-in; }
+  24.5% { left: 25px; top: -1px; transform: scale(1.35, 0.65); animation-timing-function: ease-out; }
+  /* hop to g */
+  28% { left: 29px; top: -10px; transform: scale(0.95, 1.05); animation-timing-function: ease-in; }
+  31.5% { left: 32px; top: -1px; transform: scale(1.35, 0.65); animation-timing-function: ease-out; }
+  /* hop to r */
+  35% { left: 36px; top: -10px; transform: scale(0.95, 1.05); animation-timing-function: ease-in; }
+  38.5% { left: 39px; top: -1px; transform: scale(1.35, 0.65); animation-timing-function: ease-out; }
+  /* hop to o */
+  42% { left: 43px; top: -10px; transform: scale(0.95, 1.05); animation-timing-function: ease-in; }
+  45.5% { left: 46px; top: -1px; transform: scale(1.35, 0.65); animation-timing-function: ease-out; }
+  /* hop to u */
+  49% { left: 50px; top: -10px; transform: scale(0.95, 1.05); animation-timing-function: ease-in; }
+  52.5% { left: 53px; top: -1px; transform: scale(1.35, 0.65); animation-timing-function: ease-out; }
+  /* hop to n */
+  56% { left: 57px; top: -10px; transform: scale(0.95, 1.05); animation-timing-function: ease-in; }
+  59.5% { left: 60px; top: -1px; transform: scale(1.35, 0.65); animation-timing-function: ease-out; }
+  /* hop to d */
+  63% { left: 64px; top: -10px; transform: scale(0.95, 1.05); animation-timing-function: ease-in; }
+  66.5% { left: 67px; top: -1px; transform: scale(1.35, 0.65); animation-timing-function: ease-out; }
+  /* celebratory high bounce on d */
+  73% { left: 67px; top: -14px; transform: scale(0.9, 1.1); animation-timing-function: ease-in; }
+  79% { left: 67px; top: -1px; transform: scale(1.4, 0.6); animation-timing-function: cubic-bezier(0.1, 0.8, 0.3, 1); }
+  /* smooth sweeping reverse glide back to P */
+  89% { left: 34px; top: -16px; transform: scale(1.05, 0.95); animation-timing-function: ease-in; }
+  100% { left: 4px; top: -11px; transform: scale(0.9, 1.1); }
+}
+
+/* ─── Desktop Typography & Sizing Enhancements ───────────────────────── */
+@media (min-width: 1024px) {
+  .playground-meta-badge { font-size: 12px; padding: 7px 14px; gap: 10px; }
+  .playground-top-btn { font-size: 12px; padding: 7px 13px; }
+  .dock-item-btn { font-size: 12.5px; padding: 8px 14px; gap: 7px; }
+  .dock-item-btn svg { width: 15px; height: 15px; }
+  .console-header-title strong { font-size: 12px; }
+  .console-header-title span { font-size: 9.5px; }
+  .topbar { height: 62px; min-height: 62px; }
+  .topbar-nav button { font-size: 12px; padding: 7px 11px; }
+  .brand { font-size: 21px; }
 }
 
 /* ─── SpatialKit 3D Playground Workspace & Floating Dock ─────────────── */
