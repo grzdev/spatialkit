@@ -12,7 +12,7 @@ import {
 import { createRoot } from 'react-dom/client';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { ContactShadows, Html } from '@react-three/drei';
-import { Box3, Mesh, Plane, Vector3 } from 'three';
+import { Box3, Group, Mesh, Plane, Vector3 } from 'three';
 import {
   Annotation,
   BlenderControls,
@@ -22,13 +22,20 @@ import {
   SpatialProvider,
   TimelineScrubber,
   useSpatial,
+  type JoystickValue,
   type SpatialPart,
   type SurfaceHit,
 } from 'spatialkit/react';
 import { INITIAL_NOTES, parseNotes, notesKey, annotationOffset, type Note } from './notes';
 import { DEMO_MODEL, MODEL_FIT, prepareModel, prepareModelFromUrl, type ModelAsset } from './model-files';
 import { generateComponent, publicFilename, INSTALL_COMMAND } from './integration';
-import { ControlsLab } from './ControlsLab';
+import {
+  ControlsLab,
+  HorizontalMechanicalLever,
+  PullLever,
+  TactileDial,
+  TactileJoystick,
+} from './ControlsLab';
 import './style.css';
 
 const title = (part: SpatialPart) => String(part.metadata.label ?? part.name);
@@ -308,6 +315,106 @@ function applyTheme(theme: 'light' | 'dark') {
   try { localStorage.setItem('sk-theme', theme); } catch {}
 }
 
+// ─── Interactive 3D Model Rig (Control Lab tools applied to loaded model) ───
+export type ActiveModelControl = 'none' | 'light' | 'target' | 'lift' | 'scrub';
+
+function InteractiveModelRig({
+  activeControl,
+  lightDial,
+  liftHeight,
+  children,
+}: {
+  activeControl: ActiveModelControl;
+  lightDial: number;
+  liftHeight: number;
+  children: ReactNode;
+}) {
+  const levitationRef = useRef<Group>(null);
+
+  useFrame(({ clock }) => {
+    if (!levitationRef.current) return;
+    if (activeControl === 'target') {
+      const t = clock.getElapsedTime();
+      levitationRef.current.position.y = Math.sin(t * 1.8) * 0.15;
+      levitationRef.current.position.x = Math.cos(t * 1.2) * 0.14;
+      levitationRef.current.rotation.y = Math.sin(t * 0.8) * 0.08;
+      levitationRef.current.rotation.z = Math.sin(t * 1.3) * 0.03;
+    } else if (activeControl === 'lift') {
+      const targetY = (liftHeight - 0.35) * 1.8;
+      levitationRef.current.position.y += (targetY - levitationRef.current.position.y) * 0.18;
+      levitationRef.current.position.x = 0;
+      levitationRef.current.rotation.set(0, 0, 0);
+    } else {
+      levitationRef.current.position.set(0, 0, 0);
+      levitationRef.current.rotation.set(0, 0, 0);
+    }
+  });
+
+  const lightAngle = lightDial * Math.PI * 2;
+  const lightRadius = 3.2;
+  const lightPos: [number, number, number] = [
+    Math.sin(lightAngle) * lightRadius,
+    2.7,
+    Math.cos(lightAngle) * lightRadius,
+  ];
+
+  return (
+    <>
+      {activeControl === 'light' && (
+        <group>
+          {/* Focused high-intensity inspection spotlight */}
+          <spotLight
+            position={lightPos}
+            target-position={[0, 0.8, 0]}
+            intensity={lightDial * 16 + 2}
+            angle={0.68}
+            penumbra={0.45}
+            color="#fffbeb"
+            castShadow
+          />
+          {/* Specular highlight point orb */}
+          <pointLight position={lightPos} intensity={lightDial * 8 + 1} distance={9} color="#fef08a" />
+          {/* Visual overhead bulb fixture */}
+          <mesh position={lightPos}>
+            <sphereGeometry args={[0.09, 16, 16]} />
+            <meshBasicMaterial color="#fef08a" />
+          </mesh>
+          <mesh position={[lightPos[0], lightPos[1] + 0.1, lightPos[2]]}>
+            <cylinderGeometry args={[0.11, 0.15, 0.12, 16]} />
+            <meshStandardMaterial color="#334155" metalness={0.8} roughness={0.3} />
+          </mesh>
+        </group>
+      )}
+
+      {activeControl === 'lift' && (
+        <group position={[0, 0, 0]}>
+          {/* Hydraulic base cylinder */}
+          <mesh position={[0, 0.08, 0]}>
+            <cylinderGeometry args={[0.6, 0.7, 0.16, 32]} />
+            <meshStandardMaterial color="#1e293b" metalness={0.85} roughness={0.25} />
+          </mesh>
+          {/* Telescoping piston */}
+          <mesh position={[0, Math.max(0.01, (liftHeight - 0.35) * 1.8) / 2 + 0.08, 0]}>
+            <cylinderGeometry
+              args={[0.22, 0.22, Math.max(0.01, (liftHeight - 0.35) * 1.8 + 0.16), 32]}
+            />
+            <meshStandardMaterial color="#94a3b8" metalness={0.95} roughness={0.1} />
+          </mesh>
+          {/* Lift table plate right under model */}
+          <mesh position={[0, (liftHeight - 0.35) * 1.8, 0]}>
+            <cylinderGeometry args={[1.5, 1.5, 0.06, 32]} />
+            <meshStandardMaterial color="#0f172a" metalness={0.7} roughness={0.4} />
+          </mesh>
+        </group>
+      )}
+
+      <group ref={levitationRef}>
+        {children}
+      </group>
+    </>
+  );
+}
+
 // ─── Figma-style collapsible tree group ────────────────────────────────────
 function TreeGroup({
   label,
@@ -387,33 +494,51 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
   const [tourPaused, setTourPaused] = useState(false);
   const [tourIndex, setTourIndex] = useState(0);
 
+  // Blender-style Tools Drawer & Interactive Model Controls
+  type ToolsDrawerTab = 'controls' | 'studio' | 'showcase' | 'tools';
+  const [toolsDrawerOpen, setToolsDrawerOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<ToolsDrawerTab>('controls');
+  const [activeModelControl, setActiveModelControl] = useState<ActiveModelControl>('none');
+  const [lightDial, setLightDial] = useState(0.72);
+  const [targetAim, setTargetAim] = useState<JoystickValue>({ x: 0, y: 0 });
+  const [liftHeight, setLiftHeight] = useState(0.35);
+
+  // Studio Mode Custom Backdrop Color
+  const [customStudioBg, setCustomStudioBg] = useState<string | null>(null);
+  const [hexInputText, setHexInputText] = useState('162032');
+
+  // Rich Hovering Toast / Tooltip System
+  const [activeTooltip, setActiveTooltip] = useState<{
+    title: string;
+    desc: string;
+    shortcut?: string;
+  } | null>(null);
+
+  const tooltipProps = (title: string, desc: string, shortcut?: string) => ({
+    onMouseEnter: () => setActiveTooltip({ title, desc, shortcut }),
+    onMouseLeave: () => setActiveTooltip(null),
+  });
+
   const snippet = generateComponent(model, notes);
   const storageKey = notesKey(model.id);
   const env = ENVIRONMENT_PRESETS[envPreset];
-  const canvasBg = envPreset === 'showroom' ? env.bgDark : (theme === 'dark' ? env.bgDark : env.bgLight);
+  const defaultBg = envPreset === 'showroom' ? env.bgDark : (theme === 'dark' ? env.bgDark : env.bgLight);
+  const canvasBg = customStudioBg ?? defaultBg;
 
-  // Build tour stops from saved notes, or fall back to assembly parts
+  // Build tour stops ONLY from saved notes/hotspots (user requirement)
   const tourStops = useMemo(() => {
-    if (notes.length > 0) {
-      return notes.map((note) => {
-        const part = parts.find((p) => p.id === note.target || p.name === note.target);
-        return {
-          id: note.id,
-          partId: part?.id ?? note.target,
-          partTitle: part ? title(part) : note.target.replace(/^[^/]+\//, ''),
-          caption: note.label,
-          point: note.point,
-        };
-      });
-    }
-    return parts.map((part) => ({
-      id: part.id,
-      partId: part.id,
-      partTitle: title(part),
-      caption: String(part.metadata.description ?? `Inspecting ${title(part)} in ${model.name}.`),
-      point: undefined,
-    }));
-  }, [notes, parts, model.name]);
+    if (notes.length === 0) return [];
+    return notes.map((note) => {
+      const part = parts.find((p) => p.id === note.target || p.name === note.target);
+      return {
+        id: note.id,
+        partId: part?.id ?? note.target,
+        partTitle: part ? title(part) : note.target.replace(/^[^/]+\//, ''),
+        caption: note.label,
+        point: note.point,
+      };
+    });
+  }, [notes, parts]);
 
   // Compute active clipping plane for cross-section mode
   const clippingPlanes = useMemo(() => {
@@ -462,10 +587,25 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
   // Reset draft on selection change
   useEffect(() => { setDraft(''); setEditingNote(null); }, [selected?.id]);
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts (Blender-inspired: N for tools drawer, F for presentation, R for reset)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      const targetTag = (e.target as HTMLElement)?.tagName;
+      if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') {
+        return;
+      }
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        setToolsDrawerOpen((prev) => !prev);
+      } else if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        setPresentMode((prev) => !prev);
+      } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        setFocusRequest(null);
+        controls.current?.reset();
+      } else if (e.key === 'Escape') {
+        setToolsDrawerOpen(false);
         selectRef.current(null);
         setCodeOpen(false);
         setPlacingHotspot(false);
@@ -474,11 +614,19 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
         setCaliperPointA(null);
         setTourActive(false);
         setPresentMode(false);
+        setActiveTooltip(null);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // Stop tour if all notes are cleared
+  useEffect(() => {
+    if (tourActive && tourStops.length === 0) {
+      setTourActive(false);
+    }
+  }, [tourActive, tourStops.length]);
 
   // Reset copy feedback
   useEffect(() => {
@@ -918,9 +1066,15 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
             <SceneError onReset={onDemo}>
               <Suspense fallback={<Html center><div className="scene-message">Preparing your assembly…</div></Html>}>
                 <SpatialProvider onSelectionChange={setSelected}>
-                  {model.object
-                    ? <SelectableObject object={model.object} animations={model.animations} animationProgress={model.hasAnimations ? animationProgress : undefined} explode={proceduralExplode} clippingPlanes={clippingPlanes} modelId={model.id} fit={MODEL_FIT} onSurfaceClick={handleSurfaceClick} />
-                    : <SelectableModel src="/pump.glb" modelId="pump" animationProgress={animationProgress} explode={proceduralExplode} clippingPlanes={clippingPlanes} onSurfaceClick={handleSurfaceClick} />}
+                  <InteractiveModelRig
+                    activeControl={activeModelControl}
+                    lightDial={lightDial}
+                    liftHeight={liftHeight}
+                  >
+                    {model.object
+                      ? <SelectableObject object={model.object} animations={model.animations} animationProgress={model.hasAnimations ? animationProgress : undefined} explode={proceduralExplode} clippingPlanes={clippingPlanes} modelId={model.id} fit={MODEL_FIT} onSurfaceClick={handleSurfaceClick} />
+                      : <SelectableModel src="/pump.glb" modelId="pump" animationProgress={animationProgress} explode={proceduralExplode} clippingPlanes={clippingPlanes} onSurfaceClick={handleSurfaceClick} />}
+                  </InteractiveModelRig>
                   <SceneBridge onParts={setParts} selectRef={selectRef} />
                   {showNotes && notes.map((note, i) => (
                     <Annotation
@@ -1045,94 +1199,582 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
             </div>
             <div className="view-actions">
               <button
-                className="view-action-pill"
-                aria-label={tourActive ? 'Stop guided feature tour' : 'Start guided feature tour'}
-                title="Guided Camera Tour across annotations & parts"
-                aria-pressed={tourActive}
-                onClick={() => {
-                  setTourActive((active) => {
-                    const next = !active;
-                    if (next) {
-                      setTourPaused(false);
-                      setTourIndex(0);
-                    }
-                    return next;
-                  });
-                }}
-              >
-                {tourActive ? '■ Stop tour' : '▶ Tour'}
-              </button>
-              <button
-                className="view-action-pill"
-                aria-label={turntable ? 'Stop 360 turntable orbit' : 'Start 360 turntable orbit'}
-                title="360° Studio Turntable Auto-Orbit"
-                aria-pressed={turntable}
-                onClick={() => setTurntable((t) => !t)}
-              >
-                ⟳ 360°
-              </button>
-              <button
-                aria-label="Capture Studio PNG Snapshot"
-                title="Capture high-res Studio PNG Snapshot"
-                onClick={captureStudioSnapshot}
-              >📷</button>
-              <button
                 aria-label={presentMode ? 'Exit presentation mode' : 'Enter fullscreen presentation mode'}
-                title="Toggle Presentation Showcase Mode (hide panels)"
                 aria-pressed={presentMode}
                 onClick={() => setPresentMode((p) => !p)}
-              >⛶</button>
-              <button
-                aria-label={crossSectionEnabled ? 'Disable cross-section view' : 'Enable cross-section view'}
-                title="Cross-section / Slicing Plane"
-                aria-pressed={crossSectionEnabled}
-                onClick={() => setCrossSectionEnabled((s) => !s)}
-              >✂</button>
-              <button
-                aria-label={measuring ? 'Cancel measurement' : 'Measure point-to-point distance'}
-                title="Measure distance between two points (Calipers)"
-                aria-pressed={measuring}
-                onClick={() => {
-                  setMeasuring((m) => !m);
-                  setCaliperPointA(null);
-                  setPlacingHotspot(false);
-                  setPendingHotspot(null);
-                }}
-              >📏</button>
-              {measurements.length > 0 && (
-                <button
-                  aria-label="Clear all measurements"
-                  title="Clear all dimension measurements"
-                  onClick={() => setMeasurements([])}
-                >⌫</button>
-              )}
-              <button
-                aria-label={placingHotspot ? 'Cancel hotspot placement' : 'Place annotation hotspot'}
-                title="Place an annotation on an exact surface point"
-                aria-pressed={placingHotspot}
-                onClick={() => {
-                  setPlacingHotspot((active) => !active);
-                  setPendingHotspot(null);
-                  setEditingNote(null);
-                  setDraft('');
-                  setMeasuring(false);
-                  setCaliperPointA(null);
-                }}
-              >⌖</button>
+                {...tooltipProps('Presentation Mode', 'Hide all side panels for a distraction-free widescreen showcase.', 'F')}
+              >
+                ⛶
+              </button>
               <button
                 aria-label="Reset camera view"
-                title="Reset camera view"
                 onClick={() => {
                   setFocusRequest(null);
                   controls.current?.reset();
                 }}
-              >↺</button>
+                {...tooltipProps('Reset Camera', 'Return camera angle, orbit distance, and target back to default.', 'R')}
+              >
+                ↺
+              </button>
               <button
-                aria-label={showNotes ? 'Hide annotations' : 'Show annotations'}
-                title="Toggle annotations"
-                aria-pressed={showNotes}
-                onClick={() => setShowNotes((s) => !s)}
-              >▤</button>
+                aria-label={codeOpen ? 'Close integration guide' : 'Open integration guide'}
+                aria-pressed={codeOpen}
+                onClick={() => setCodeOpen((o) => !o)}
+                {...tooltipProps('Integration Guide', 'View and export production-ready React snippet for your site.', 'Esc')}
+              >
+                〈/〉
+              </button>
+              <button
+                type="button"
+                className={`tools-drawer-pill ${toolsDrawerOpen ? 'active' : ''}`}
+                aria-label="Toggle Spatial Tools Drawer"
+                aria-pressed={toolsDrawerOpen}
+                onClick={() => setToolsDrawerOpen((o) => !o)}
+                {...tooltipProps('Spatial Tools Drawer', 'Open Blender-style N drawer with Model Rigs, Studio Lighting, Tour, and Measurement tools.', 'N')}
+              >
+                ✦ Tools <kbd>N</kbd>
+              </button>
+            </div>
+          </div>
+
+          {/* ─── Hovering Action Toast / Tooltip ─── */}
+          {activeTooltip && (
+            <div className="hover-action-toast" role="tooltip">
+              <div className="toast-header">
+                <strong>{activeTooltip.title}</strong>
+                {activeTooltip.shortcut && <kbd>{activeTooltip.shortcut}</kbd>}
+              </div>
+              <p>{activeTooltip.desc}</p>
+            </div>
+          )}
+
+          {/* ─── Model Controls Floating Dock ─── */}
+          {activeModelControl !== 'none' && (
+            <div className="model-controls-dock" role="region" aria-label="Active Model Control">
+              <div className="model-controls-dock-title">
+                <strong>
+                  {activeModelControl === 'light' && '✦ INSPECTION LIGHT'}
+                  {activeModelControl === 'target' && '✦ FLIGHT GIMBAL'}
+                  {activeModelControl === 'lift' && '✦ HYDRAULIC LIFT'}
+                  {activeModelControl === 'scrub' && '✦ MECHANICAL SCRUBBER'}
+                </strong>
+                <span>
+                  {activeModelControl === 'light' && `ORBIT: ${Math.round(lightDial * 360)}° · LUMENS: ${Math.round(lightDial * 100)}%`}
+                  {activeModelControl === 'target' && `AIM: [${(targetAim.x * 100).toFixed(0)}, ${(targetAim.y * 100).toFixed(0)}]`}
+                  {activeModelControl === 'lift' && `HEIGHT: ${(liftHeight * 1.8).toFixed(2)}m`}
+                  {activeModelControl === 'scrub' && `PROGRESS: ${Math.round((model.hasAnimations ? animationProgress : proceduralExplode) * 100)}%`}
+                </span>
+              </div>
+
+              {activeModelControl === 'light' && (
+                <TactileDial
+                  value={lightDial}
+                  onChange={setLightDial}
+                  size={72}
+                  label="ORBIT / INTENSITY"
+                  formatValue={(v) => `${Math.round(v * 100)}%`}
+                />
+              )}
+
+              {activeModelControl === 'target' && (
+                <TactileJoystick
+                  value={targetAim}
+                  onChange={setTargetAim}
+                  size={96}
+                  label="GIMBAL"
+                />
+              )}
+
+              {activeModelControl === 'lift' && (
+                <div style={{ height: 110, display: 'flex', alignItems: 'center' }}>
+                  <PullLever
+                    value={liftHeight}
+                    onChange={setLiftHeight}
+                    label="PULL LEVER"
+                    unitLabel="m"
+                  />
+                </div>
+              )}
+
+              {activeModelControl === 'scrub' && (
+                <div style={{ width: 170 }}>
+                  <HorizontalMechanicalLever
+                    value={model.hasAnimations ? animationProgress : proceduralExplode}
+                    onChange={model.hasAnimations ? setAnimationProgress : setProceduralExplode}
+                    label={model.hasAnimations ? 'ANIMATION' : 'EXPLODE'}
+                  />
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="model-controls-dock-close"
+                onClick={() => setActiveModelControl('none')}
+                aria-label="Close active control"
+                title="Deactivate control rig"
+              >
+                ×
+              </button>
+            </div>
+          )}
+
+          {/* ─── Tactical Gimbal HUD Overlay (Card 07 Style) ─── */}
+          {activeModelControl === 'target' && (
+            <div className="target-hud-overlay" aria-hidden="true">
+              <div className="hud-top-tape">
+                <span className="tape-heading">✦ GIMBAL LOCK-ON SYSTEM</span>
+                <span>AIM: [{(targetAim.x * 100).toFixed(0)}, {(targetAim.y * 100).toFixed(0)}]</span>
+                <span className={`hud-status-badge ${Math.hypot(targetAim.x, targetAim.y) < 0.22 ? 'locked' : ''}`}>
+                  {Math.hypot(targetAim.x, targetAim.y) < 0.22 ? '● TARGET LOCKED' : '○ ACQUIRING'}
+                </span>
+              </div>
+
+              {/* Center Target Bracket on model */}
+              <div
+                className={`hud-target-bracket ${Math.hypot(targetAim.x, targetAim.y) < 0.22 ? 'is-locked' : ''}`}
+                style={{
+                  position: 'absolute',
+                  left: '50%',
+                  top: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: 140,
+                  height: 140,
+                  pointerEvents: 'none',
+                  border: `1.5px dashed ${Math.hypot(targetAim.x, targetAim.y) < 0.22 ? '#10b981' : '#f59e0b'}`,
+                  borderRadius: 8,
+                }}
+              >
+                <span className="bracket-label">
+                  {Math.hypot(targetAim.x, targetAim.y) < 0.22 ? 'ASSEMBLY TARGET [LOCKED]' : 'ASSEMBLY TARGET'}
+                </span>
+                <div className="bracket-corner tl" />
+                <div className="bracket-corner tr" />
+                <div className="bracket-corner bl" />
+                <div className="bracket-corner br" />
+              </div>
+
+              {/* Movable Reticle Crosshair */}
+              <div
+                className="hud-reticle-movable"
+                style={{
+                  position: 'absolute',
+                  left: `${50 + targetAim.x * 35}%`,
+                  top: `${50 - targetAim.y * 35}%`,
+                  transform: 'translate(-50%, -50%)',
+                  width: 80,
+                  height: 80,
+                  pointerEvents: 'none',
+                }}
+              >
+                <svg className="hud-crosshair-svg" viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="28" fill="none" stroke={Math.hypot(targetAim.x, targetAim.y) < 0.22 ? '#10b981' : '#38bdf8'} strokeWidth="1.5" strokeDasharray="6 4" />
+                  <circle cx="40" cy="40" r="4" fill={Math.hypot(targetAim.x, targetAim.y) < 0.22 ? '#10b981' : '#38bdf8'} />
+                  <line x1="40" y1="4" x2="40" y2="20" stroke={Math.hypot(targetAim.x, targetAim.y) < 0.22 ? '#10b981' : '#38bdf8'} strokeWidth="1.5" />
+                  <line x1="40" y1="60" x2="40" y2="76" stroke={Math.hypot(targetAim.x, targetAim.y) < 0.22 ? '#10b981' : '#38bdf8'} strokeWidth="1.5" />
+                  <line x1="4" y1="40" x2="20" y2="40" stroke={Math.hypot(targetAim.x, targetAim.y) < 0.22 ? '#10b981' : '#38bdf8'} strokeWidth="1.5" />
+                  <line x1="60" y1="40" x2="76" y2="40" stroke={Math.hypot(targetAim.x, targetAim.y) < 0.22 ? '#10b981' : '#38bdf8'} strokeWidth="1.5" />
+                </svg>
+              </div>
+
+              <div className="hud-bottom-tape">
+                <span>AZIMUTH: {(targetAim.x * 45).toFixed(1)}°</span>
+                <span>ELEVATION: {(targetAim.y * 30).toFixed(1)}°</span>
+                <span>RANGE: 3.4M</span>
+              </div>
+            </div>
+          )}
+
+          {/* ─── Blender-Style 'N' Tools Drawer ─── */}
+          <div
+            className={`tools-drawer ${toolsDrawerOpen ? 'is-open' : ''}`}
+            aria-label="Spatial Tools Drawer"
+            aria-hidden={!toolsDrawerOpen}
+          >
+            <div className="tools-drawer-header">
+              <div className="tools-drawer-title">
+                <span>✦</span> SPATIAL TOOLS
+                <span className="drawer-shortcut-badge">N</span>
+              </div>
+              <button
+                type="button"
+                className="tools-drawer-close"
+                onClick={() => setToolsDrawerOpen(false)}
+                aria-label="Close tools drawer"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="tools-drawer-tabs" role="tablist">
+              {(['controls', 'studio', 'showcase', 'tools'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  role="tab"
+                  aria-selected={drawerTab === tab}
+                  className={`tools-drawer-tab ${drawerTab === tab ? 'active' : ''}`}
+                  onClick={() => setDrawerTab(tab)}
+                >
+                  {tab.toUpperCase()}
+                </button>
+              ))}
+            </div>
+
+            <div className="tools-drawer-body">
+              {drawerTab === 'controls' && (
+                <>
+                  <div className="drawer-section">
+                    <div className="drawer-section-title">
+                      <span>MODEL INTERACTION RIG</span>
+                    </div>
+                    <div className="drawer-btn-grid">
+                      <button
+                        type="button"
+                        className={`drawer-action-btn ${activeModelControl === 'light' ? 'active' : ''}`}
+                        onClick={() => setActiveModelControl((c) => (c === 'light' ? 'none' : 'light'))}
+                        {...tooltipProps('Inspection Light Rig', 'Orbit a high-intensity spotlight around the model with the tactile dial.')}
+                      >
+                        💡 Light Rig
+                      </button>
+                      <button
+                        type="button"
+                        className={`drawer-action-btn ${activeModelControl === 'target' ? 'active' : ''}`}
+                        onClick={() => setActiveModelControl((c) => (c === 'target' ? 'none' : 'target'))}
+                        {...tooltipProps('Flight Gimbal Rig', 'Target and lock onto the levitating model using the tactical flight joystick.')}
+                      >
+                        🎯 Flight Gimbal
+                      </button>
+                      <button
+                        type="button"
+                        className={`drawer-action-btn ${activeModelControl === 'lift' ? 'active' : ''}`}
+                        onClick={() => setActiveModelControl((c) => (c === 'lift' ? 'none' : 'lift'))}
+                        {...tooltipProps('Hydraulic Lift Rig', 'Mount model on a hydraulic platform raised and lowered by a pull lever.')}
+                      >
+                        🛗 Hydraulic Lift
+                      </button>
+                      <button
+                        type="button"
+                        className={`drawer-action-btn ${activeModelControl === 'scrub' ? 'active' : ''}`}
+                        onClick={() => setActiveModelControl((c) => (c === 'scrub' ? 'none' : 'scrub'))}
+                        {...tooltipProps('Mechanical Scrubber', 'Scrub through animations or exploded parts with the horizontal slider lever.')}
+                      >
+                        ⏱ Scrubber
+                      </button>
+                      <button
+                        type="button"
+                        className={`drawer-action-btn full-width ${activeModelControl === 'none' ? 'active' : ''}`}
+                        onClick={() => setActiveModelControl('none')}
+                        {...tooltipProps('Reset Rig', 'Return to standard inspection mode without active mechanical controls.')}
+                      >
+                        ⊘ Standard Orbit
+                      </button>
+                    </div>
+                  </div>
+
+                  {activeModelControl !== 'none' && (
+                    <div className="drawer-section">
+                      <div className="drawer-section-title">
+                        <span>ACTIVE CONTROL WIDGET</span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px 0', background: 'rgba(2, 6, 23, 0.45)', borderRadius: 8, border: '1px solid rgba(148, 163, 184, 0.15)' }}>
+                        {activeModelControl === 'light' && (
+                          <TactileDial
+                            value={lightDial}
+                            onChange={setLightDial}
+                            size={88}
+                            label="ORBIT / INTENSITY"
+                            formatValue={(v) => `${Math.round(v * 100)}%`}
+                            showGraduations
+                          />
+                        )}
+                        {activeModelControl === 'target' && (
+                          <TactileJoystick
+                            value={targetAim}
+                            onChange={setTargetAim}
+                            size={112}
+                            label="FLIGHT GIMBAL"
+                          />
+                        )}
+                        {activeModelControl === 'lift' && (
+                          <div style={{ height: 140, display: 'flex', alignItems: 'center' }}>
+                            <PullLever
+                              value={liftHeight}
+                              onChange={setLiftHeight}
+                              label="HYDRAULIC LIFT"
+                              unitLabel="m"
+                            />
+                          </div>
+                        )}
+                        {activeModelControl === 'scrub' && (
+                          <div style={{ width: '90%', padding: '10px 0' }}>
+                            <HorizontalMechanicalLever
+                              value={model.hasAnimations ? animationProgress : proceduralExplode}
+                              onChange={model.hasAnimations ? setAnimationProgress : setProceduralExplode}
+                              label={model.hasAnimations ? 'ANIMATION' : 'EXPLODE'}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="drawer-hint-box">
+                    💡 Control Lab tools can be played with directly on this model. When active, a floating dock also appears in the viewport.
+                  </div>
+                </>
+              )}
+
+              {drawerTab === 'studio' && (
+                <>
+                  <div className="drawer-section">
+                    <div className="drawer-section-title">
+                      <span>LIGHTING ENVIRONMENT</span>
+                    </div>
+                    <div className="drawer-btn-grid">
+                      {(Object.keys(ENVIRONMENT_PRESETS) as StudioEnvironmentPreset[]).map((key) => (
+                        <button
+                          key={key}
+                          type="button"
+                          className={`drawer-action-btn ${envPreset === key && !customStudioBg ? 'active' : ''}`}
+                          onClick={() => {
+                            setEnvPreset(key);
+                            setCustomStudioBg(null);
+                          }}
+                          {...tooltipProps(`${ENVIRONMENT_PRESETS[key].label} Environment`, `Switch lighting & backdrop to ${ENVIRONMENT_PRESETS[key].label}.`)}
+                        >
+                          {ENVIRONMENT_PRESETS[key].label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="drawer-section">
+                    <div className="color-glide-wrap">
+                      <div className="drawer-section-title">
+                        <span>CUSTOM BACKDROP COLOR</span>
+                        {customStudioBg && (
+                          <button
+                            type="button"
+                            onClick={() => setCustomStudioBg(null)}
+                            style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '9px', font: 'inherit' }}
+                          >
+                            Reset
+                          </button>
+                        )}
+                      </div>
+                      <div className="color-palette-swatches">
+                        {['#090d16', '#0f172a', '#1e293b', '#111a2c', '#18181b', '#262626', '#f8fafc', '#e2e8f0', '#fed7aa', '#134e4a', '#312e81'].map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            className={`palette-swatch ${canvasBg.toLowerCase() === c.toLowerCase() ? 'active' : ''}`}
+                            style={{ backgroundColor: c }}
+                            onClick={() => {
+                              setCustomStudioBg(c);
+                              setHexInputText(c.replace('#', ''));
+                            }}
+                            aria-label={`Select color ${c}`}
+                          />
+                        ))}
+                      </div>
+                      <div className="hex-glide-controls">
+                        <div className="hex-glide-input-wrap">
+                          <span className="hex-glide-prefix">#</span>
+                          <input
+                            type="text"
+                            className="hex-glide-text-input"
+                            maxLength={6}
+                            value={hexInputText}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/[^0-9a-fA-F]/g, '');
+                              setHexInputText(val);
+                              if (val.length === 6 || val.length === 3) {
+                                setCustomStudioBg(`#${val}`);
+                              }
+                            }}
+                            aria-label="Hex color value"
+                          />
+                        </div>
+                        <label className="native-color-picker-button" title="Choose custom color">
+                          <span style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: canvasBg }} />
+                          <input
+                            type="color"
+                            value={canvasBg.startsWith('#') && canvasBg.length === 7 ? canvasBg : '#162032'}
+                            onChange={(e) => {
+                              setCustomStudioBg(e.target.value);
+                              setHexInputText(e.target.value.replace('#', ''));
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="drawer-hint-box">
+                    Use the color swatches or hex glide slider above to dial in the perfect background tone for presentations and recordings.
+                  </div>
+                </>
+              )}
+
+              {drawerTab === 'showcase' && (
+                <>
+                  <div className="drawer-section">
+                    <div className="drawer-section-title">
+                      <span>PRESENTATION & SHOWCASE</span>
+                    </div>
+                    <div className="drawer-btn-grid">
+                      <button
+                        type="button"
+                        className={`drawer-action-btn ${turntable ? 'active' : ''}`}
+                        onClick={() => setTurntable((t) => !t)}
+                        {...tooltipProps('360° Turntable', 'Continuously orbit around the model for video capture.')}
+                      >
+                        {turntable ? '■ Stop Turntable' : '⟳ 360° Turntable'}
+                      </button>
+                      <button
+                        type="button"
+                        className={`drawer-action-btn ${tourActive ? 'active' : ''}`}
+                        disabled={notes.length === 0}
+                        onClick={() => {
+                          if (notes.length === 0) return;
+                          setTourActive((active) => {
+                            const next = !active;
+                            if (next) {
+                              setTourPaused(false);
+                              setTourIndex(0);
+                            }
+                            return next;
+                          });
+                        }}
+                        {...tooltipProps('Guided Camera Tour', notes.length > 0 ? `Fly camera sequentially across ${notes.length} hotspots.` : 'Requires at least one note/hotspot.')}
+                      >
+                        {tourActive ? '■ Stop Tour' : `▶ Tour (${notes.length})`}
+                      </button>
+                      <button
+                        type="button"
+                        className="drawer-action-btn"
+                        onClick={captureStudioSnapshot}
+                        {...tooltipProps('Studio Snapshot', 'Capture and download a high-res PNG snapshot of the 3D canvas.')}
+                      >
+                        📷 PNG Snapshot
+                      </button>
+                      <button
+                        type="button"
+                        className={`drawer-action-btn ${presentMode ? 'active' : ''}`}
+                        onClick={() => setPresentMode((p) => !p)}
+                        {...tooltipProps('Presentation Mode', 'Toggle distraction-free widescreen showcase mode.', 'F')}
+                      >
+                        ⛶ Fullscreen
+                      </button>
+                    </div>
+                  </div>
+
+                  {notes.length === 0 && (
+                    <div className="drawer-hint-box">
+                      📌 <strong>Guided Tour:</strong> Place at least one annotation or surface hotspot on your model to enable guided camera fly-throughs.
+                    </div>
+                  )}
+                </>
+              )}
+
+              {drawerTab === 'tools' && (
+                <>
+                  <div className="drawer-section">
+                    <div className="drawer-section-title">
+                      <span>MEASUREMENT & SLICING</span>
+                    </div>
+                    <div className="drawer-btn-grid">
+                      <button
+                        type="button"
+                        className={`drawer-action-btn ${measuring ? 'active' : ''}`}
+                        onClick={() => {
+                          setMeasuring((m) => !m);
+                          setCaliperPointA(null);
+                          setPlacingHotspot(false);
+                          setPendingHotspot(null);
+                        }}
+                        {...tooltipProps('Calipers Measurement', 'Click two points on the model surface to measure real 3D distance.')}
+                      >
+                        📏 Calipers
+                      </button>
+                      <button
+                        type="button"
+                        className={`drawer-action-btn ${crossSectionEnabled ? 'active' : ''}`}
+                        onClick={() => setCrossSectionEnabled((s) => !s)}
+                        {...tooltipProps('Slicing Plane', 'Cut cross-section through geometry along X, Y, or Z axis.')}
+                      >
+                        ✂ Slicing Plane
+                      </button>
+                      <button
+                        type="button"
+                        className={`drawer-action-btn ${placingHotspot ? 'active' : ''}`}
+                        onClick={() => {
+                          setPlacingHotspot((active) => !active);
+                          setPendingHotspot(null);
+                          setEditingNote(null);
+                          setDraft('');
+                          setMeasuring(false);
+                          setCaliperPointA(null);
+                        }}
+                        {...tooltipProps('Place Hotspot', 'Click anywhere on the model to anchor a pinpoint 3D annotation.')}
+                      >
+                        ⌖ Place Hotspot
+                      </button>
+                      <button
+                        type="button"
+                        className={`drawer-action-btn ${showNotes ? 'active' : ''}`}
+                        onClick={() => setShowNotes((s) => !s)}
+                        {...tooltipProps('Toggle Annotations', 'Show or hide all 3D annotation markers and labels.')}
+                      >
+                        ▤ Annotations
+                      </button>
+                    </div>
+
+                    {measurements.length > 0 && (
+                      <button
+                        type="button"
+                        className="drawer-action-btn full-width"
+                        onClick={() => setMeasurements([])}
+                        style={{ marginTop: 6 }}
+                      >
+                        ⌫ Clear Measurements ({measurements.length})
+                      </button>
+                    )}
+                  </div>
+
+                  {crossSectionEnabled && (
+                    <div className="drawer-section">
+                      <div className="drawer-section-title">
+                        <span>SLICING AXIS & POSITION</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        {(['x', 'y', 'z'] as const).map((axis) => (
+                          <button
+                            key={axis}
+                            type="button"
+                            className={`drawer-action-btn ${sectionAxis === axis ? 'active' : ''}`}
+                            style={{ flex: 1, justifyContent: 'center' }}
+                            onClick={() => setSectionAxis(axis)}
+                          >
+                            {axis.toUpperCase()}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+                        <input
+                          type="range"
+                          min={-1}
+                          max={1}
+                          step={0.01}
+                          value={sectionOffset}
+                          onChange={(e) => setSectionOffset(parseFloat(e.target.value))}
+                          style={{ flex: 1 }}
+                        />
+                        <output style={{ font: '10px monospace', color: 'var(--accent)' }}>{sectionOffset.toFixed(2)}</output>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
 

@@ -130,7 +130,7 @@ function DeckOfCardsViewer({ progress }: { progress: number }) {
 }
 
 /** Horizontal Mechanical Slider Lever with Graduation Marks and Heavy T-Grip Handle. */
-function HorizontalMechanicalLever({
+export function HorizontalMechanicalLever({
   value,
   onChange,
   min = 0,
@@ -237,7 +237,7 @@ function HorizontalMechanicalLever({
   );
 }
 
-/** 07 3D Stage: Target Drone with Completely Fixed Camera Aim. */
+/** 07 3D Stage: Target Drone with Orbitable 3D Space & Tactical Gimbal Aim. */
 function TargetShooterScene({
   onTargetPosUpdate,
 }: {
@@ -247,12 +247,6 @@ function TargetShooterScene({
   const droneRef = useRef<Group>(null);
   const ringRef = useRef<Mesh>(null);
   const tempVec = useRef(new Vector3());
-
-  // Keep camera rock solid - NO camera rotation when joystick moves!
-  useEffect(() => {
-    camera.position.set(0, 0, 0);
-    camera.rotation.set(0, 0, 0);
-  }, [camera]);
 
   useFrame((state) => {
     const t = state.clock.getElapsedTime();
@@ -287,7 +281,7 @@ function TargetShooterScene({
       <directionalLight position={[5, 8, 5]} intensity={2.4} />
       <directionalLight position={[-5, -2, -3]} intensity={0.8} color="#0284c7" />
 
-      {/* Cyber low-poly wireframe ground grid (COMPLETELY STATIONARY) */}
+      {/* Cyber low-poly wireframe ground grid */}
       <gridHelper args={[24, 16, '#334155', '#0f172a']} position={[0, -2.4, -4]} />
 
       {/* Floating Low-Poly Radar Buoys */}
@@ -327,6 +321,8 @@ function TargetShooterScene({
           <meshBasicMaterial color="#06b6d4" />
         </mesh>
       </group>
+
+      <BlenderControls target={[0, 0, -4.5]} minDistance={2} maxDistance={10} enableDamping />
     </>
   );
 }
@@ -349,7 +345,7 @@ function TargetTracker3D({ joystick }: { joystick: JoystickValue }) {
 
   return (
     <div className="target-tracker-stage">
-      <Canvas camera={{ position: [0, 0, 0], fov: 52 }}>
+      <Canvas camera={{ position: [0, 0.5, 0.5], fov: 55 }}>
         <TargetShooterScene onTargetPosUpdate={setTargetInfo} />
       </Canvas>
 
@@ -574,7 +570,7 @@ function SuzanneInspection3D({ light }: { light: number }) {
 }
 
 /** Tactile vertical mechanical pull-lever with a physical grab handle, track ticks, wheel, and keyboard support. */
-function PullLever({
+export function PullLever({
   value,
   onChange,
   min = 0,
@@ -703,7 +699,7 @@ function PullLever({
 }
 
 /** Tactile rotary dial with protruding lever handle, SVG progress arc, and graduation numbers that react when reached. */
-function TactileDial({
+export function TactileDial({
   value,
   onChange,
   min = 0,
@@ -813,7 +809,7 @@ function TactileDial({
 }
 
 /** Tactile Physical Flight / Arcade Joystick with machined bezel, cardinal markings, and 3D thumbstick. */
-function TactileJoystick({
+export function TactileJoystick({
   value,
   onChange,
   size = 124,
