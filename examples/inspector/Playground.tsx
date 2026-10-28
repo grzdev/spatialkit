@@ -439,6 +439,20 @@ export function ViewportDirector({
   return null;
 }
 
+const FIXED_GIMBAL_COLORS = [
+  '#070b14',
+  '#0f172a',
+  '#1e293b',
+  '#111a2c',
+  '#18181b',
+  '#262626',
+  '#312e81',
+  '#134e4a',
+  '#fed7aa',
+  '#e2e8f0',
+  '#f8fafc',
+];
+
 export function Playground({
   model,
   onUpload,
@@ -656,6 +670,7 @@ export function Playground({
     heading: 0,
     pitch: 0,
   });
+  const [gimbalBg, setGimbalBg] = useState('#070b14');
 
   const [liftHeight, setLiftHeight] = useState(0.0); // Minimum height rests on 3D grid line!
   const [animationProgress, setAnimationProgress] = useState(0);
@@ -698,7 +713,11 @@ export function Playground({
 
   // Pitch black dark-room environment for spotlight inspection
   const isSpotlightMode = activeTool === 'light';
-  const canvasBg = isSpotlightMode ? '#010408' : (customStudioBg ?? defaultBg);
+  const canvasBg = isSpotlightMode
+    ? '#010408'
+    : activeTool === 'gimbal'
+      ? gimbalBg
+      : (customStudioBg ?? defaultBg);
 
   // Derive active model control from selected tool
   const activeModelControl: ActiveModelControl = useMemo(() => {
@@ -1226,7 +1245,7 @@ export function Playground({
               <span>
                 {activeTool === 'inspect' && `${notes.length} HOTSPOT${notes.length === 1 ? '' : 'S'} · ${parts.length} PARTS`}
                 {activeTool === 'light' && `ORBIT: ${Math.round(lightDial * 360)}° · BRIGHTNESS: ${Math.round(lightBrightness * 100)}%`}
-                {activeTool === 'gimbal' && `AIM: [${(targetAim.x * 100).toFixed(0)}, ${(targetAim.y * 100).toFixed(0)}] · ${isTargetLocked ? 'LOCKED' : 'TRACKING'}`}
+                {activeTool === 'gimbal' && `AIM: [${(targetAim.x * 100).toFixed(0)}, ${(targetAim.y * 100).toFixed(0)}] · ${isTargetLocked ? 'LOCKED' : 'TRACKING'} · COLOR: ${gimbalBg}`}
                 {activeTool === 'lift' && `HEIGHT: ${(0.08 + liftHeight * 3.4).toFixed(2)}m`}
                 {activeTool === 'scrubber' && `PROGRESS: ${Math.round((model.hasAnimations ? animationProgress : proceduralExplode) * 100)}%`}
                 {activeTool === 'studio' && `PRESET: ${env.label} · COLOR: ${canvasBg}`}
@@ -1526,14 +1545,51 @@ export function Playground({
               </div>
             )}
 
-            {/* Flight Gimbal Joystick Widget */}
+            {/* Flight Gimbal Joystick Widget + Fixed Background Color Swatches in a straight line */}
             {activeTool === 'gimbal' && (
-              <TactileJoystick
-                value={targetAim}
-                onChange={setTargetAim}
-                size={116}
-                label="FLIGHT GIMBAL"
-              />
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', gap: 12 }}>
+                <TactileJoystick
+                  value={targetAim}
+                  onChange={setTargetAim}
+                  size={116}
+                  label="FLIGHT GIMBAL"
+                />
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: '100%', paddingTop: 8, borderTop: '1px solid rgba(148, 163, 184, 0.15)' }}>
+                  <span style={{ font: '700 9px "JetBrains Mono", monospace', color: '#64748b', letterSpacing: '0.6px' }}>
+                    BACKGROUND COLOR
+                  </span>
+                  <div
+                    className="gimbal-color-line"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      width: '100%',
+                      padding: '2px 0',
+                    }}
+                  >
+                    {FIXED_GIMBAL_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        className={`palette-swatch ${gimbalBg.toLowerCase() === c.toLowerCase() ? 'active' : ''}`}
+                        style={{
+                          backgroundColor: c,
+                          width: 18,
+                          height: 18,
+                          minWidth: 18,
+                          minHeight: 18,
+                          padding: 0,
+                          flexShrink: 0,
+                        }}
+                        onClick={() => setGimbalBg(c)}
+                        aria-label={`Set gimbal background ${c}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Hydraulic Lift Lever Widget with generous padding top & bottom */}
