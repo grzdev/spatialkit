@@ -1216,7 +1216,7 @@ export function Playground({
         <ViewportDirector turntable={turntable} focusRequest={focusRequest} controlsRef={controlsRef} />
       </Canvas>
 
-      {/* ─── Inspector Sidecard 1: Hotspots, Guided Tour & Assembly Dropdown (Separate Upper Div on Right) ─── */}
+      {/* ─── Inspector Sidecard: Hotspots, Guided Tour & Assembly Dropdown (Left Div under Name & Upload) ─── */}
       {activeTool === 'inspect' && tourPanelOpen && (
         <aside
           className={`inspector-tour-panel ${tourPanelMinimized ? 'minimized' : ''}`}

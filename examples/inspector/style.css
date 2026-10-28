@@ -4247,14 +4247,15 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   margin-left: auto;
 }
 
-/* ─── Inspector Sidecard 1: Hotspots, Tour & Assembly (Upper Div on Right) ─── */
+/* ─── Inspector Sidecard: Hotspots, Tour & Assembly (Left Div under Name & Upload) ─── */
 .inspector-tour-panel {
   position: absolute;
-  top: 74px;
-  right: 28px;
-  width: 350px;
+  top: 62px;
+  left: 18px;
+  right: auto;
+  width: 330px;
   max-width: calc(100% - 36px);
-  max-height: calc(100vh - 380px);
+  max-height: calc(100vh - 150px);
   background: rgba(15, 23, 42, 0.95);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
@@ -4318,7 +4319,7 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
 
 @media (max-width: 768px) {
   .inspector-tour-panel {
-    top: 58px;
+    top: 48px;
     right: 10px;
     left: 10px;
     width: auto;
