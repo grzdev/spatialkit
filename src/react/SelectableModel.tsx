@@ -190,7 +190,8 @@ export function SelectableObject({
         event.stopPropagation();
         const record = instance.records.find((candidate) => candidate.object === event.object);
         if (record) {
-          select(record.part.id);
+          const nextTarget = selectedPart?.id === record.part.id ? null : record.part.id;
+          select(nextTarget);
           const point = event.object.worldToLocal(event.point.clone());
           onSurfaceClick?.({
             part: record.part,

@@ -39,21 +39,36 @@ import {
 function SceneBridge({
   onParts,
   selectRef,
+  onSelectedPartChange,
 }: {
   onParts: (parts: SpatialPart[]) => void;
   selectRef: React.MutableRefObject<(target: string | null) => void>;
+  onSelectedPartChange?: (partId: string | null) => void;
 }) {
-  const { parts, select } = useSpatial();
+  const { parts, select, selectedPart } = useSpatial();
   useEffect(() => {
     onParts(parts);
   }, [parts, onParts]);
   useEffect(() => {
     selectRef.current = select;
   }, [select, selectRef]);
+  useEffect(() => {
+    onSelectedPartChange?.(selectedPart?.id ?? null);
+  }, [selectedPart, onSelectedPartChange]);
   return null;
 }
 
 // ─── Precision SVG Glyphs for Professional CAD/Blender UI ───────────────────
+export function IconDownload() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
 export function IconInspector() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -719,6 +734,7 @@ export function Playground({
   const [turntable, setTurntable] = useState(false);
   const [shutterFlash, setShutterFlash] = useState(false);
   const [snapshotToast, setSnapshotToast] = useState<string | null>(null);
+  const [snapshotPreview, setSnapshotPreview] = useState<{ url: string; filename: string } | null>(null);
 
   // Slicer Cross-Section Tool: Defaults to 1.00 so full model is 100% visible by default!
   // In CAD & 3D printing, Z is the vertical height axis (Top-to-Bottom slicing plane)
@@ -792,19 +808,21 @@ export function Playground({
     try {
       setShutterFlash(true);
       setTimeout(() => setShutterFlash(false), 260);
-      canvas.toBlob((blob) => {
-        if (!blob) return;
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${publicFilename(model.name)}-playground.png`;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-        setSnapshotToast('Studio snapshot saved');
-      }, 'image/png');
+      const url = canvas.toDataURL('image/png');
+      const filename = `${publicFilename(model.name)}-studio-snapshot.png`;
+      setSnapshotPreview({ url, filename });
     } catch {
       setSnapshotToast('Snapshot capture unavailable.');
     }
+  }
+
+  function handleDownloadSnapshot() {
+    if (!snapshotPreview) return;
+    const a = document.createElement('a');
+    a.href = snapshotPreview.url;
+    a.download = snapshotPreview.filename;
+    a.click();
+    setSnapshotToast('Snapshot downloaded!');
   }
 
   // Keyboard shortcuts
@@ -816,6 +834,19 @@ export function Playground({
         e.preventDefault();
         controlsRef.current?.reset();
       } else if (e.key === 'Escape') {
+        if (snapshotPreview) {
+          setSnapshotPreview(null);
+          return;
+        }
+        if (selectedPartId) {
+          setSelectedPartId(null);
+          selectRef.current(null);
+          setHighlightedNoteId(null);
+          setPendingPoint(null);
+          setPendingWorldBeacon(null);
+          setPendingTarget(null);
+          return;
+        }
         if (sidebarOpen) {
           setSidebarOpen(false);
           return;
@@ -829,12 +860,22 @@ export function Playground({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [sidebarOpen]);
+  }, [sidebarOpen, snapshotPreview, selectedPartId]);
 
   // Surface click for 3D hotspots in inspector mode
   function handleSurfaceClick(hit: SurfaceHit) {
     if (activeTool === 'inspect') {
       const partId = hit.part.id;
+      if (selectedPartId === partId) {
+        // Deselect currently selected part if clicked again
+        setSelectedPartId(null);
+        selectRef.current(null);
+        setHighlightedNoteId(null);
+        setPendingPoint(null);
+        setPendingWorldBeacon(null);
+        setPendingTarget(null);
+        return;
+      }
       setSelectedPartId(partId);
       selectRef.current(partId);
 
@@ -1111,6 +1152,16 @@ export function Playground({
         dpr={[1, 2]}
         camera={{ position: [4.6, 2.5, 4.8], fov: 40 }}
         gl={{ localClippingEnabled: true, preserveDrawingBuffer: true }}
+        onPointerMissed={() => {
+          if (selectedPartId) {
+            setSelectedPartId(null);
+            selectRef.current(null);
+            setHighlightedNoteId(null);
+            setPendingPoint(null);
+            setPendingWorldBeacon(null);
+            setPendingTarget(null);
+          }
+        }}
       >
         <color attach="background" args={[canvasBg]} />
         <ambientLight intensity={isSpotlightMode ? 0.02 : env.ambient} />
@@ -1163,7 +1214,19 @@ export function Playground({
                 )}
               </InteractiveModelRig>
 
-              <SceneBridge onParts={setParts} selectRef={selectRef} />
+              <SceneBridge
+                onParts={setParts}
+                selectRef={selectRef}
+                onSelectedPartChange={(partId) => {
+                  setSelectedPartId(partId);
+                  if (!partId) {
+                    setHighlightedNoteId(null);
+                    setPendingPoint(null);
+                    setPendingWorldBeacon(null);
+                    setPendingTarget(null);
+                  }
+                }}
+              />
 
               {/* 3D Hotspot Annotations */}
               {activeTool === 'inspect' && notes.map((note, i) => (
@@ -1285,9 +1348,22 @@ export function Playground({
                 <div className="inspector-section-label">
                   <span>SAVED HOTSPOTS ({notes.length})</span>
                   {selectedPartId && (
-                    <span style={{ color: '#38bdf8', fontSize: 9.5 }}>
-                      ACTIVE: {selectedPartId.replace(/^[^/]+\//, '')}
-                    </span>
+                    <button
+                      type="button"
+                      className="inspector-deselect-chip"
+                      onClick={() => {
+                        setSelectedPartId(null);
+                        selectRef.current(null);
+                        setHighlightedNoteId(null);
+                        setPendingPoint(null);
+                        setPendingWorldBeacon(null);
+                        setPendingTarget(null);
+                      }}
+                      title="Click to deselect part"
+                    >
+                      <span>ACTIVE: {selectedPartId.replace(/^[^/]+\//, '')}</span>
+                      <span className="deselect-x">✕</span>
+                    </button>
                   )}
                 </div>
 
@@ -1300,10 +1376,19 @@ export function Playground({
                           key={note.id}
                           className={`inspector-note-card ${isMatch ? 'active-highlight' : ''}`}
                           onClick={() => {
-                            setSelectedPartId(note.target);
-                            setHighlightedNoteId(note.id);
-                            selectRef.current(note.target);
-                            triggerCameraFocus(note.target, note.point);
+                            if (selectedPartId === note.target) {
+                              setSelectedPartId(null);
+                              setHighlightedNoteId(null);
+                              selectRef.current(null);
+                              setPendingPoint(null);
+                              setPendingWorldBeacon(null);
+                              setPendingTarget(null);
+                            } else {
+                              setSelectedPartId(note.target);
+                              setHighlightedNoteId(note.id);
+                              selectRef.current(note.target);
+                              triggerCameraFocus(note.target, note.point);
+                            }
                           }}
                         >
                           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1, gap: 1 }}>
@@ -1400,11 +1485,20 @@ export function Playground({
                               type="button"
                               className={`assembly-part-item ${isSelected ? 'selected' : ''}`}
                               onClick={() => {
-                                setSelectedPartId(part.id);
-                                selectRef.current(part.id);
-                                triggerCameraFocus(part.id);
-                                const match = notes.find((n) => n.target === part.id);
-                                setHighlightedNoteId(match ? match.id : null);
+                                if (selectedPartId === part.id) {
+                                  setSelectedPartId(null);
+                                  selectRef.current(null);
+                                  setHighlightedNoteId(null);
+                                  setPendingPoint(null);
+                                  setPendingWorldBeacon(null);
+                                  setPendingTarget(null);
+                                } else {
+                                  setSelectedPartId(part.id);
+                                  selectRef.current(part.id);
+                                  triggerCameraFocus(part.id);
+                                  const match = notes.find((n) => n.target === part.id);
+                                  setHighlightedNoteId(match ? match.id : null);
+                                }
                               }}
                             >
                               <span className="part-mesh-icon">⬡</span>
@@ -1528,6 +1622,8 @@ export function Playground({
                         onClick={() => {
                           setPendingPoint(null);
                           setPendingTarget(null);
+                          setSelectedPartId(null);
+                          selectRef.current(null);
                           setDraftLabel('');
                         }}
                         style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13 }}
@@ -1559,8 +1655,31 @@ export function Playground({
                     </div>
                   </div>
                 ) : (
-                  <div className="inspector-hint-pill">
-                    <span>💡 Click any part on the model to attach a hotspot</span>
+                  <div className="inspector-hint-pill" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {selectedPartId ? (
+                        <>Part: <strong>{selectedPartId.replace(/^[^/]+\//, '')}</strong></>
+                      ) : (
+                        '💡 Click any part on the model to attach a hotspot'
+                      )}
+                    </span>
+                    {selectedPartId && (
+                      <button
+                        type="button"
+                        className="inspector-deselect-btn"
+                        onClick={() => {
+                          setSelectedPartId(null);
+                          selectRef.current(null);
+                          setHighlightedNoteId(null);
+                          setPendingPoint(null);
+                          setPendingWorldBeacon(null);
+                          setPendingTarget(null);
+                        }}
+                        title="Deselect active part"
+                      >
+                        ✕ Deselect
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -1771,6 +1890,18 @@ export function Playground({
                     onClick={() => setShowGrid((g) => !g)}
                   >
                     Grid: {showGrid ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+
+                <div className="studio-snapshot-row">
+                  <button
+                    type="button"
+                    className="studio-snapshot-btn"
+                    onClick={captureStudioSnapshot}
+                    title="Capture full-resolution 3D viewport snapshot"
+                  >
+                    <IconCamera />
+                    <span>Take Studio Snapshot</span>
                   </button>
                 </div>
               </div>
@@ -2121,6 +2252,69 @@ export function Playground({
           </div>
         </div>
       </aside>
+
+      {/* ─── Snapshot Preview Modal (Shows immediately after capturing snapshot) ─── */}
+      {snapshotPreview && (
+        <div
+          className="snapshot-preview-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Viewport Snapshot Preview"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSnapshotPreview(null);
+          }}
+        >
+          <div className="snapshot-preview-card">
+            <div className="snapshot-preview-header">
+              <div className="snapshot-preview-title">
+                <IconCamera />
+                <span>Studio Snapshot Preview</span>
+              </div>
+              <button
+                type="button"
+                className="snapshot-preview-close"
+                onClick={() => setSnapshotPreview(null)}
+                aria-label="Close preview"
+                title="Go back"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="snapshot-preview-image-wrap">
+              <img
+                src={snapshotPreview.url}
+                alt="3D Studio Snapshot"
+                className="snapshot-preview-img"
+              />
+            </div>
+
+            <div className="snapshot-preview-footer">
+              <div className="snapshot-preview-meta">
+                <span className="snapshot-preview-badge">PNG</span>
+                <span className="snapshot-preview-filename">{snapshotPreview.filename}</span>
+              </div>
+              <div className="snapshot-preview-actions">
+                <button
+                  type="button"
+                  className="snapshot-btn-back"
+                  onClick={() => setSnapshotPreview(null)}
+                >
+                  ← Go Back
+                </button>
+                <button
+                  type="button"
+                  className="snapshot-btn-download"
+                  onClick={handleDownloadSnapshot}
+                >
+                  <IconDownload />
+                  <span>Download</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
