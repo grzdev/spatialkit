@@ -407,13 +407,13 @@ export function ViewportDirector({
     if (flightRef.current) {
       const flight = flightRef.current;
       flight.elapsed += dt;
-      const damp = 1 - Math.exp(-6.5 * dt);
+      const damp = 1 - Math.exp(-8.5 * dt);
       ctrl.target.lerp(flight.goalTarget, damp);
       camera.position.lerp(flight.goalCamera, damp);
       ctrl.update();
 
       if (
-        flight.elapsed > 1.1 ||
+        flight.elapsed > 0.85 ||
         (ctrl.target.distanceToSquared(flight.goalTarget) < 0.002 &&
           camera.position.distanceToSquared(flight.goalCamera) < 0.005)
       ) {
@@ -498,10 +498,12 @@ export function Playground({
   const [parts, setParts] = useState<SpatialPart[]>([]);
   const selectRef = useRef<(target: string | null) => void>(() => {});
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
+  const [highlightedNoteId, setHighlightedNoteId] = useState<string | null>(null);
   const [pendingPoint, setPendingPoint] = useState<[number, number, number] | null>(null);
   const [pendingTarget, setPendingTarget] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
   const [showAssembly, setShowAssembly] = useState(false);
+  const [assemblyFilter, setAssemblyFilter] = useState('');
 
   // Guided Feature Tour State
   const [tourActive, setTourActive] = useState(false);
@@ -541,16 +543,18 @@ export function Playground({
     const stop = tourStops[safeIndex];
     if (stop) {
       selectRef.current(stop.partId);
+      setSelectedPartId(stop.partId);
+      setHighlightedNoteId(stop.id);
       triggerCameraFocus(stop.partId, stop.point);
     }
   }, [tourActive, tourIndex, tourStops]);
 
-  // Tour timer
+  // Tour timer (3.2 seconds brisk rhythm per stop)
   useEffect(() => {
     if (!tourActive || tourPaused || tourStops.length <= 1) return;
     const timer = setInterval(() => {
       setTourIndex((prev) => (prev + 1) % tourStops.length);
-    }, 4200);
+    }, 3200);
     return () => clearInterval(timer);
   }, [tourActive, tourPaused, tourStops.length]);
 
@@ -669,8 +673,9 @@ export function Playground({
   const [snapshotToast, setSnapshotToast] = useState<string | null>(null);
 
   // Slicer Cross-Section Tool: Defaults to 1.00 so full model is 100% visible by default!
+  // In CAD & 3D printing, Z is the vertical height axis (Top-to-Bottom slicing plane)
   const [crossSectionEnabled, setCrossSectionEnabled] = useState(false);
-  const [sectionAxis, setSectionAxis] = useState<'x' | 'y' | 'z'>('y');
+  const [sectionAxis, setSectionAxis] = useState<'x' | 'y' | 'z'>('z');
   const [sectionOffset, setSectionOffset] = useState(1.0);
 
   // Tool Selection with strict state isolation (no feature bleeding)
@@ -681,6 +686,7 @@ export function Playground({
       if (next !== 'inspect') {
         setPendingPoint(null);
         setPendingTarget(null);
+        setHighlightedNoteId(null);
         setTourActive(false);
       }
       return next;
@@ -703,15 +709,23 @@ export function Playground({
     return 'none';
   }, [activeTool]);
 
-  // Slicing plane: 1.00 = 100% visible, progressively cuts through as dragged down to -1.00
+  // Slicing plane:
+  // In CAD & 3D printing, Z is vertical height (slices top to bottom)
+  // X is width (slices left to right)
+  // Y is depth (slices front to back)
   const clippingPlanes = useMemo(() => {
     if (activeTool !== 'slicer' || !crossSectionEnabled) return undefined;
-    if (sectionAxis === 'y') {
+    if (sectionAxis === 'z') {
       const normal = new Vector3(0, -1, 0);
       const constant = (sectionOffset + 1.0) * 1.4;
       return [new Plane(normal, constant)];
     }
-    const normal = sectionAxis === 'x' ? new Vector3(-1, 0, 0) : new Vector3(0, 0, -1);
+    if (sectionAxis === 'x') {
+      const normal = new Vector3(-1, 0, 0);
+      const constant = sectionOffset * 2.2 + 0.2;
+      return [new Plane(normal, constant)];
+    }
+    const normal = new Vector3(0, 0, -1);
     const constant = sectionOffset * 2.2 + 0.2;
     return [new Plane(normal, constant)];
   }, [activeTool, crossSectionEnabled, sectionAxis, sectionOffset]);
@@ -767,11 +781,22 @@ export function Playground({
   // Surface click for 3D hotspots in inspector mode
   function handleSurfaceClick(hit: SurfaceHit) {
     if (activeTool === 'inspect') {
-      const worldPos = (hit.worldPoint ?? hit.point).slice() as [number, number, number];
-      setPendingPoint(worldPos);
-      setPendingTarget(hit.part.id);
-      setSelectedPartId(hit.part.id);
-      selectRef.current(hit.part.id);
+      const partId = hit.part.id;
+      setSelectedPartId(partId);
+      selectRef.current(partId);
+
+      // Check if clicked part already has a hotspot
+      const match = notes.find((n) => n.target === partId);
+      if (match) {
+        setHighlightedNoteId(match.id);
+        setPendingPoint(null);
+        setPendingTarget(null);
+      } else {
+        const worldPos = (hit.worldPoint ?? hit.point).slice() as [number, number, number];
+        setPendingPoint(worldPos);
+        setPendingTarget(partId);
+        setHighlightedNoteId(null);
+      }
       setConsoleMinimized(false);
     }
   }
@@ -780,14 +805,13 @@ export function Playground({
     <main className="playground-workspace" ref={viewportRef} aria-label="SpatialKit 3D Playground">
       {shutterFlash && <div className="viewport-shutter-flash" aria-hidden="true" />}
 
-      {/* ─── Topbar HUD Overlay (Responsive for Mobile, Laptop, Desktop) ─── */}
+      {/* ─── Topbar HUD Overlay (Clean & Uncluttered) ─── */}
       <div className="playground-topbar">
         <div className="playground-meta-badge">
           <span className="status-dot" aria-hidden="true" />
           <strong title={activeTool === 'gimbal' ? 'Basketball (Target)' : model.name}>
             {activeTool === 'gimbal' ? 'Basketball' : model.name}
           </strong>
-          <span style={{ color: '#94a3b8' }}>{model.format}</span>
           <button
             type="button"
             className="playground-top-btn"
@@ -834,30 +858,12 @@ export function Playground({
         <div className="playground-top-actions">
           <button
             type="button"
-            className={`playground-top-btn ${turntable ? 'active' : ''}`}
-            onClick={() => setTurntable((t) => !t)}
-            title="360° Studio Turntable"
-          >
-            <IconTurntable />
-            <span>360°</span>
-          </button>
-          <button
-            type="button"
-            className="playground-top-btn"
-            onClick={captureStudioSnapshot}
-            title="Capture Studio PNG Snapshot"
-          >
-            <IconCamera />
-            <span>Snapshot</span>
-          </button>
-          <button
-            type="button"
             className="playground-top-btn"
             onClick={() => controlsRef.current?.reset()}
             title="Reset Camera View [R]"
           >
             <IconReset />
-            <span>Reset</span>
+            <span>Reset [R]</span>
           </button>
           <button
             type="button"
@@ -868,6 +874,24 @@ export function Playground({
             <span>☰ Tools</span>
           </button>
         </div>
+      </div>
+
+      {/* ─── Bottom-Left 3D Model Credit Badge (Aligned with bottom dock) ─── */}
+      <div className="playground-credit-badge" role="contentinfo" aria-label="3D Model Attribution">
+        <span className="credit-icon">©</span>
+        {activeTool === 'gimbal' ? (
+          <span>
+            Model: <a href="https://sketchfab.com/ikagogava" target="_blank" rel="noreferrer">Basketball by Ika Gogava</a> (Sketchfab)
+          </span>
+        ) : model.id === 'pump' ? (
+          <span>
+            Model: <strong>PX–04 Demonstration Pump</strong> (SpatialKit)
+          </span>
+        ) : (
+          <span>
+            Model: <strong>{model.name}</strong> (Local preview)
+          </span>
+        )}
       </div>
 
       {snapshotToast && (
@@ -1247,13 +1271,13 @@ export function Playground({
           >
             {/* 3D Inspector: Hotspots, Guided Tour, Closeable Assembly, & Export/Import */}
             {activeTool === 'inspect' && (
-              <div className="inspector-console-wrap" style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {/* 1. Hotspot Creation Anchor Box */}
+              <div className="inspector-console-wrap" style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {/* 1. Hotspot Input Box (Contextual: Appears when user clicks surface to add a hotspot) */}
                 {pendingPoint ? (
                   <div className="inspector-anchor-box">
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                       <span style={{ font: '700 10.5px "JetBrains Mono", monospace', color: '#38bdf8' }}>
-                        ✦ POINT ANCHORED: [{pendingPoint[0].toFixed(2)}, {pendingPoint[1].toFixed(2)}, {pendingPoint[2].toFixed(2)}]
+                        ✦ ATTACH TO {pendingTarget?.replace(/^[^/]+\//, '').toUpperCase()}
                       </span>
                       <button
                         type="button"
@@ -1263,6 +1287,7 @@ export function Playground({
                           setDraftLabel('');
                         }}
                         style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13 }}
+                        title="Cancel"
                       >
                         ✕
                       </button>
@@ -1271,7 +1296,7 @@ export function Playground({
                       <input
                         type="text"
                         className="inspector-text-input"
-                        placeholder="e.g. Turbine impeller housing"
+                        placeholder="Describe this hotspot…"
                         value={draftLabel}
                         onChange={(e) => setDraftLabel(e.target.value)}
                         onKeyDown={(e) => {
@@ -1285,71 +1310,91 @@ export function Playground({
                         onClick={handleSaveHotspot}
                         disabled={!draftLabel.trim()}
                       >
-                        Add
+                        Attach ↗
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <div style={{ font: '11px "JetBrains Mono", monospace', color: '#94a3b8', background: 'rgba(15, 23, 42, 0.55)', padding: '8px 10px', borderRadius: 6, border: '1px dashed rgba(148, 163, 184, 0.25)' }}>
-                    Click any point on the model surface to drop an interactive 3D hotspot.
+                  <div className="inspector-hint-pill">
+                    <span>💡 Click any part on the model to highlight or drop a hotspot</span>
                   </div>
                 )}
 
-                {/* 2. Hotspots List */}
-                {notes.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 135, overflowY: 'auto' }}>
-                    {notes.map((note) => (
-                      <div
-                        key={note.id}
-                        className="inspector-note-card"
-                        onClick={() => {
-                          selectRef.current(note.target);
-                          triggerCameraFocus(note.target, note.point);
-                        }}
-                      >
-                        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
-                          <span style={{ font: '700 10px "JetBrains Mono", monospace', color: '#38bdf8' }}>
-                            {note.target.replace(/^[^/]+\//, '')}
-                          </span>
-                          <span style={{ font: '500 11.5px "Manrope", sans-serif', color: '#f1f5f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {note.label}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          className="inspector-note-delete"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteNote(note.id);
-                          }}
-                          title="Delete hotspot"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
+                {/* 2. Hotspots List with live selection highlighting */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+                  <div className="inspector-section-label">
+                    <span>HOTSPOTS ({notes.length})</span>
+                    {selectedPartId && (
+                      <span style={{ color: '#38bdf8', fontSize: 9.5 }}>
+                        SELECTED: {selectedPartId.replace(/^[^/]+\//, '')}
+                      </span>
+                    )}
                   </div>
-                )}
 
-                {/* 3. Guided Tour Launcher */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {notes.length > 0 ? (
+                    <div className="inspector-notes-scroll">
+                      {notes.map((note) => {
+                        const isMatch = highlightedNoteId === note.id || selectedPartId === note.target;
+                        return (
+                          <div
+                            key={note.id}
+                            className={`inspector-note-card ${isMatch ? 'active-highlight' : ''}`}
+                            onClick={() => {
+                              setSelectedPartId(note.target);
+                              setHighlightedNoteId(note.id);
+                              selectRef.current(note.target);
+                              triggerCameraFocus(note.target, note.point);
+                            }}
+                          >
+                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1, gap: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span className="note-part-badge">{note.target.replace(/^[^/]+\//, '')}</span>
+                                {isMatch && <span className="note-selected-tag">● ACTIVE</span>}
+                              </div>
+                              <span className="note-label-text">{note.label}</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="inspector-note-delete"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteNote(note.id);
+                                if (highlightedNoteId === note.id) setHighlightedNoteId(null);
+                              }}
+                              title="Delete hotspot"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="inspector-empty-notes">
+                      No hotspots placed yet. Click on the model to add your first point.
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Guided Tour Launcher (with fast 3.2s transition rhythm) */}
+                <div style={{ width: '100%' }}>
                   {tourStops.length >= 2 ? (
                     <button
                       type="button"
                       className={`inspector-tour-toggle-btn ${tourActive ? 'active' : ''}`}
                       onClick={() => setTourActive((a) => !a)}
                     >
-                      <span>{tourActive ? '⏹ Exit Guided Tour' : '▶ Start Guided Feature Tour'}</span>
-                      <span style={{ fontSize: 10, opacity: 0.85 }}>({tourStops.length} stops)</span>
+                      <span>{tourActive ? '⏹ Exit Tour' : '▶ Start Guided Feature Tour'}</span>
+                      <span style={{ fontSize: 10, opacity: 0.85 }}>({tourStops.length} stops · 3s pace)</span>
                     </button>
                   ) : (
-                    <div style={{ font: '10.5px "Manrope", sans-serif', color: '#64748b', textAlign: 'center', padding: '4px 0' }}>
-                      Add at least 2 hotspots to unlock guided tour ({tourStops.length}/2)
+                    <div className="inspector-tour-locked-banner">
+                      Add {2 - tourStops.length} more hotspot{2 - tourStops.length === 1 ? '' : 's'} to unlock guided tour
                     </div>
                   )}
                 </div>
 
-                {/* 4. Closeable Assembly Tree */}
+                {/* 4. Closeable Assembly Dropdown with search filter */}
                 <div className="inspector-assembly-section">
                   <button
                     type="button"
@@ -1362,37 +1407,54 @@ export function Playground({
 
                   {showAssembly && (
                     <div className="inspector-assembly-list">
-                      <div className="assembly-list-toolbar">
-                        <span>MODEL COMPONENTS</span>
-                        <button
-                          type="button"
-                          className="assembly-close-pill"
-                          onClick={() => setShowAssembly(false)}
-                        >
-                          Hide Assembly ✕
-                        </button>
+                      <div className="assembly-search-input-wrap">
+                        <input
+                          type="text"
+                          className="assembly-search-mini"
+                          placeholder="Filter parts…"
+                          value={assemblyFilter}
+                          onChange={(e) => setAssemblyFilter(e.target.value)}
+                        />
+                        {assemblyFilter && (
+                          <button
+                            type="button"
+                            className="assembly-search-clear"
+                            onClick={() => setAssemblyFilter('')}
+                          >
+                            ×
+                          </button>
+                        )}
                       </div>
                       <div className="assembly-scroll-container">
-                        {parts.map((part) => {
-                          const isSelected = selectedPartId === part.id;
-                          return (
-                            <button
-                              key={part.id}
-                              type="button"
-                              className={`assembly-part-item ${isSelected ? 'selected' : ''}`}
-                              onClick={() => {
-                                setSelectedPartId(part.id);
-                                selectRef.current(part.id);
-                                triggerCameraFocus(part.id);
-                              }}
-                            >
-                              <span className="part-mesh-icon">⬡</span>
-                              <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {String(part.metadata?.label ?? part.name)}
-                              </span>
-                            </button>
-                          );
-                        })}
+                        {parts
+                          .filter((p) => {
+                            const name = String(p.metadata?.label ?? p.name).toLowerCase();
+                            return !assemblyFilter || name.includes(assemblyFilter.toLowerCase()) || p.id.toLowerCase().includes(assemblyFilter.toLowerCase());
+                          })
+                          .map((part) => {
+                            const isSelected = selectedPartId === part.id;
+                            const hasNote = notes.some((n) => n.target === part.id);
+                            return (
+                              <button
+                                key={part.id}
+                                type="button"
+                                className={`assembly-part-item ${isSelected ? 'selected' : ''}`}
+                                onClick={() => {
+                                  setSelectedPartId(part.id);
+                                  selectRef.current(part.id);
+                                  triggerCameraFocus(part.id);
+                                  const match = notes.find((n) => n.target === part.id);
+                                  setHighlightedNoteId(match ? match.id : null);
+                                }}
+                              >
+                                <span className="part-mesh-icon">⬡</span>
+                                <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {String(part.metadata?.label ?? part.name)}
+                                </span>
+                                {hasNote && <span className="assembly-note-dot" title="Has hotspot">●</span>}
+                              </button>
+                            );
+                          })}
                       </div>
                     </div>
                   )}
@@ -1576,15 +1638,19 @@ export function Playground({
             {activeTool === 'slicer' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', minWidth: 260 }}>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  {(['x', 'y', 'z'] as const).map((axis) => (
+                  {[
+                    { key: 'z', label: 'Z (TOP-DOWN)' },
+                    { key: 'x', label: 'X (SIDE-TO-SIDE)' },
+                    { key: 'y', label: 'Y (FRONT-BACK)' },
+                  ].map(({ key, label }) => (
                     <button
-                      key={axis}
+                      key={key}
                       type="button"
-                      className={`dock-item-btn ${sectionAxis === axis ? 'active' : ''}`}
-                      style={{ flex: 1, justifyContent: 'center', padding: '6px 4px' }}
-                      onClick={() => setSectionAxis(axis)}
+                      className={`dock-item-btn ${sectionAxis === key ? 'active' : ''}`}
+                      style={{ flex: 1, justifyContent: 'center', padding: '6px 4px', fontSize: '9px' }}
+                      onClick={() => setSectionAxis(key as 'x' | 'y' | 'z')}
                     >
-                      {axis.toUpperCase()} AXIS
+                      {label}
                     </button>
                   ))}
                 </div>

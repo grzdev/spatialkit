@@ -15,7 +15,7 @@ export interface ModelAsset {
   file?: File;
   dispose?: () => void;
 }
-export const DEMO_MODEL: ModelAsset = { id: 'pump', name: 'PX–04 Pump', filename: 'pump.glb', format: 'Demo assembly · GLB', hasAnimations: true };
+export const DEMO_MODEL: ModelAsset = { id: 'pump', name: 'PX–04 Pump', filename: 'pump.glb', format: 'GLB', hasAnimations: true };
 
 /** Read and validate the container before GLTFLoader can fetch any referenced resources. */
 export function validateModelFile(filename: string, bytes: ArrayBuffer): Record<string, any> {
