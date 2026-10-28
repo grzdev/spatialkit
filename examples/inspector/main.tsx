@@ -502,9 +502,9 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
   const [theme, setTheme]             = useState<'light' | 'dark'>(getInitialTheme);
   type ActiveView = 'inspector' | 'playground' | 'controls';
   const [activeView, setActiveView]   = useState<ActiveView>(() => {
-    if (window.location.hash === '#playground') return 'playground';
     if (window.location.hash === '#controls') return 'controls';
-    return 'inspector';
+    if (window.location.hash === '#inspector') return 'inspector';
+    return 'playground';
   });
 
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
@@ -851,12 +851,6 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
 
         <nav className="topbar-nav" aria-label="Site navigation">
           <button
-            className={`nav-view ${activeView === 'inspector' ? 'nav-active' : ''}`}
-            onClick={() => switchView('inspector')}
-          >
-            Inspector
-          </button>
-          <button
             className={`nav-view nav-playground ${activeView === 'playground' ? 'nav-active' : ''}`}
             onClick={() => switchView('playground')}
           >
@@ -960,7 +954,7 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
       </div>
 
       {activeView === 'controls' ? (
-        <ControlsLab onBack={() => switchView('inspector')} />
+        <ControlsLab onBack={() => switchView('playground')} />
       ) : activeView === 'playground' ? (
         <Playground
           model={model}
@@ -970,6 +964,9 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
           uploadError={uploadError}
           theme={theme}
           notes={notes}
+          onNotesChange={setNotes}
+          onOpenGuide={() => setCodeOpen(true)}
+          onDownloadModel={downloadModel}
         />
       ) : (
       /* ── 3-column workspace — fills remaining viewport ──────────── */
