@@ -238,6 +238,7 @@ export function GimbalCameraTurret({
   aim,
   ballPosRef,
   onHUDUpdate,
+  isMobile = false,
 }: {
   active: boolean;
   aim: JoystickValue;
@@ -252,6 +253,7 @@ export function GimbalCameraTurret({
     heading: number;
     pitch: number;
   }) => void;
+  isMobile?: boolean;
 }) {
   const { camera, size } = useThree();
   const aimForward = useRef(new Vector3());
@@ -297,10 +299,12 @@ export function GimbalCameraTurret({
     camera.rotation.x += (targetPitch - camera.rotation.x) * 0.20;
     camera.rotation.z += (targetRoll - camera.rotation.z) * 0.20;
 
-    // Angular check for missile lock: angle between camera forward vector and target
-    camera.getWorldDirection(aimForward.current);
+    // Angular check for missile lock: ray passing through camera bore-sight reticle
     targetDir.current.copy(ballPosRef.current).sub(camera.position).normalize();
-    const angleRad = aimForward.current.angleTo(targetDir.current);
+    // On mobile, the bore-sight reticle is elevated to top 36% (NDC Y +0.28) so controls don't block it
+    const reticleNdcY = isMobile ? 0.28 : 0;
+    const aimRay = aimForward.current.set(0, reticleNdcY, 0.5).unproject(camera).sub(camera.position).normalize();
+    const angleRad = aimRay.angleTo(targetDir.current);
     const angleDeg = (angleRad * 180) / Math.PI;
 
     // Lock cone: within 0.18 radians (~10.3 degrees) = TARGET MISSILE LOCK!
@@ -530,7 +534,7 @@ export function Playground({
   }, []);
 
   const isMobileToolActive = isMobile && activeTool && activeTool !== 'inspect';
-  const mobileModelYOffset = isMobileToolActive ? 0.52 : 0;
+  const mobileModelYOffset = isMobileToolActive ? 0.85 : 0;
 
   // Guided Feature Tour State
   const [tourActive, setTourActive] = useState(false);
@@ -817,6 +821,13 @@ export function Playground({
       setSelectedPartId(partId);
       selectRef.current(partId);
 
+      if (isMobile) {
+        // Pure model exploration on mobile: no pending hotspot prompt or beacon
+        setPendingPoint(null);
+        setPendingTarget(null);
+        return;
+      }
+
       // Check if clicked part already has a hotspot
       const match = notes.find((n) => n.target === partId);
       if (match) {
@@ -932,8 +943,8 @@ export function Playground({
         </div>
       )}
 
-      {/* Hotspot Placement Instruction Banner */}
-      {activeTool === 'inspect' && !tourActive && (
+      {/* Hotspot Placement Instruction Banner (Desktop only) */}
+      {activeTool === 'inspect' && !tourActive && !isMobile && (
         <div
           className="placement-banner"
           role="status"
@@ -1001,13 +1012,13 @@ export function Playground({
             </div>
           )}
 
-          {/* Optical crosshair fixed to camera center bore-sight: ORANGE -> GREEN */}
+          {/* Optical crosshair fixed to camera bore-sight: elevated on mobile to clear bottom controls */}
           <div
             className="hud-reticle-center"
             style={{
               position: 'absolute',
               left: '50%',
-              top: '50%',
+              top: isMobile ? '36%' : '50%',
               transform: 'translate(-50%, -50%)',
               width: 90,
               height: 90,
@@ -1172,8 +1183,8 @@ export function Playground({
                 />
               ))}
 
-              {/* Active Locator Beacon when surface point is targeted */}
-              {activeTool === 'inspect' && pendingPoint && (
+              {/* Active Locator Beacon when surface point is targeted (Desktop only) */}
+              {activeTool === 'inspect' && !isMobile && pendingPoint && (
                 <mesh position={pendingPoint}>
                   <sphereGeometry args={[0.045, 16, 16]} />
                   <meshBasicMaterial color="#38bdf8" depthTest={false} />
@@ -1205,7 +1216,7 @@ export function Playground({
             activeTool === 'gimbal'
               ? [0, 2.0, 0]
               : isMobileToolActive
-              ? [0, 0.72, 0]
+              ? [0, 0.48, 0]
               : [0, 1.15, 0]
           }
           minDistance={1.8}
@@ -1217,8 +1228,8 @@ export function Playground({
         {activeTool !== 'gimbal' && (
           <ResponsiveCameraFraming
             controlsRef={controlsRef}
-            basePosition={isMobile ? [5.2, 2.8, 5.4] : [4.6, 2.5, 4.8]}
-            target={isMobileToolActive ? [0, 0.72, 0] : [0, 1.15, 0]}
+            basePosition={isMobile ? [5.4, 3.2, 5.6] : [4.6, 2.5, 4.8]}
+            target={isMobileToolActive ? [0, 0.48, 0] : [0, 1.15, 0]}
           />
         )}
 
@@ -1229,6 +1240,7 @@ export function Playground({
             aim={targetAim}
             ballPosRef={ballPositionRef}
             onHUDUpdate={setGimbalHUD}
+            isMobile={isMobile}
           />
         )}
 
