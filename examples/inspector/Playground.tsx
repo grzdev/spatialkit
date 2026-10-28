@@ -871,55 +871,30 @@ export function Playground({
     <main className="playground-workspace" ref={viewportRef} aria-label="SpatialKit 3D Playground">
       {shutterFlash && <div className="viewport-shutter-flash" aria-hidden="true" />}
 
-      {/* ─── Topbar HUD Overlay (Clean & Uncluttered) ─── */}
-      <div className="playground-topbar">
-        <div className="playground-meta-badge">
-          <span className="status-dot" aria-hidden="true" />
-          <strong title={activeTool === 'gimbal' ? 'Basketball (Target)' : model.name}>
-            {activeTool === 'gimbal' ? 'Basketball' : model.name}
-          </strong>
-          <button
-            type="button"
-            className="playground-top-btn"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            style={{ padding: '3px 8px', fontSize: '10px' }}
-          >
-            {uploading ? 'Preparing…' : '↑ Upload'}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".glb,.gltf"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = '';
-              if (file) onUpload(file);
-            }}
-          />
-          <input
-            ref={noteFileInputRef}
-            type="file"
-            accept=".json,application/json"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = '';
-              if (file) handleImportNotes(file);
-            }}
-          />
-          {model.object && (
-            <button
-              type="button"
-              className="playground-top-btn"
-              onClick={onDemo}
-              style={{ padding: '3px 8px', fontSize: '10px' }}
-            >
-              ↶ Demo
-            </button>
-          )}
-        </div>
+      {/* ─── Topbar HUD Overlay: Right Actions Only (Clean & Uncluttered Viewport) ─── */}
+      <div className="playground-topbar" style={{ justifyContent: 'flex-end' }}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".glb,.gltf"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) onUpload(file);
+          }}
+        />
+        <input
+          ref={noteFileInputRef}
+          type="file"
+          accept=".json,application/json"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) handleImportNotes(file);
+          }}
+        />
 
         <div className="playground-top-actions">
           <button

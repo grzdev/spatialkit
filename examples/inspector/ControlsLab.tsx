@@ -45,30 +45,28 @@ function ControlCard({ index, number, title, description, tags, code, toggle3D, 
   );
 }
 
-/** 01 3D Stage: Exploded Industrial Pump Assembly Scrub. */
+/** 01 3D Stage: Exploded Industrial Pump Assembly Scrub (Exact match to Playground). */
 function ExplodedPumpViewer({ progress }: { progress: number }) {
   return (
     <div className="lab-3d-stage">
-      <Canvas camera={{ position: [0, 1.2, 3.2], fov: 42 }}>
-        <color attach="background" args={['#0e1526']} />
-        <ambientLight intensity={1.2} />
-        <directionalLight position={[5, 7, 5]} intensity={2.6} />
-        <directionalLight position={[-4, 3, -3]} intensity={1.3} color="#94a3b8" />
+      <Canvas camera={{ position: [4.4, 2.4, 4.6], fov: 46 }}>
+        <color attach="background" args={['#080e1a']} />
+        <ambientLight intensity={0.9} />
+        <directionalLight position={[6, 8, 5]} intensity={2.4} />
+        <directionalLight position={[-6, 4, -4]} intensity={1.0} color="#94a3b8" />
+        <pointLight position={[0, 4, 3]} intensity={1.4} color="#f8fafc" />
         <Suspense fallback={null}>
           <SpatialProvider>
-            <group rotation={[0.15, progress * Math.PI * 0.75, 0]}>
-              <SelectableModel
-                src="/pump.glb"
-                modelId="pump-assembly"
-                explode={progress * 1.6}
-                fit={2.4}
-                position={[0, 0.1, 0]}
-              />
-            </group>
+            <SelectableModel
+              src="/pump.glb"
+              modelId="pump-assembly"
+              explode={progress}
+              fit={2.8}
+            />
           </SpatialProvider>
         </Suspense>
-        <gridHelper args={[10, 20, '#1e293b', '#0f172a']} position={[0, -0.65, 0]} />
-        <BlenderControls target={[0, 0.25, 0]} minDistance={1.6} maxDistance={7} enableDamping />
+        <gridHelper args={[20, 40, '#1e293b', '#0f172a']} position={[0, -0.025, 0]} />
+        <BlenderControls target={[0, 1.15, 0]} minDistance={1.8} maxDistance={20} enableDamping />
       </Canvas>
     </div>
   );
@@ -1096,7 +1094,7 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
             active: !!active3D['01'],
             onToggle: () => setActive3D((prev) => ({ ...prev, '01': !prev['01'] })),
           }}
-          code={`const [timeline, setTimeline] = useState(0.25);\n<HorizontalMechanicalLever value={timeline} onChange={setTimeline} />\n<SelectableModel src="/pump.glb" explode={timeline * 1.6} />`}
+          code={`const [timeline, setTimeline] = useState(0.25);\n<HorizontalMechanicalLever value={timeline} onChange={setTimeline} />\n<SelectableModel src="/pump.glb" explode={timeline} />`}
         >
           {active3D['01'] ? (
             <ExplodedPumpViewer progress={pendulum} />
@@ -1107,8 +1105,7 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
             </div>
           )}
           <div className="lab-control-row">
-            <HorizontalMechanicalLever value={pendulum} onChange={setPendulum} label="Pump assembly exploded view lever" />
-            <output>{Math.round(pendulum * 100)}%</output>
+            <HorizontalMechanicalLever value={pendulum} onChange={setPendulum} label="EXPLODE PROGRESS" />
           </div>
         </ControlCard>
 

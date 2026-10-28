@@ -518,6 +518,7 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
 
   const selectRef = useRef<(target: string | null) => void>(() => {});
   const controls  = useRef<ComponentRef<typeof BlenderControls>>(null);
+  const topFileInputRef = useRef<HTMLInputElement>(null);
   const viewportRef = useRef<HTMLElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const noteFileInput = useRef<HTMLInputElement>(null);
@@ -842,12 +843,46 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
 
   return (
     <div className="app">
-      {/* ── Topbar ─────────────────────────────────────────────────── */}
+      {/* ── Topbar: Brand & Upload Action ───────────────────────────── */}
       <header className="topbar">
-        <a className="brand" href="/" aria-label="SpatialKit home">
-          <span className="brand-mark">S<span>↗</span></span>
-          spatialkit
-        </a>
+        <div className="topbar-brand-wrap">
+          <a className="brand" href="/" aria-label="SpatialKit home">
+            <span className="brand-mark">S<span>↗</span></span>
+            spatialkit
+          </a>
+
+          {/* Quick Upload action placed directly in navbar next to logo */}
+          <button
+            type="button"
+            className="topbar-upload-btn"
+            onClick={() => topFileInputRef.current?.click()}
+            disabled={uploading}
+            title="Upload a custom 3D model (.glb / .gltf)"
+          >
+            {uploading ? 'Preparing…' : '↑ Upload'}
+          </button>
+          <input
+            ref={topFileInputRef}
+            type="file"
+            accept=".glb,.gltf"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) onUpload(file);
+            }}
+          />
+          {model.object && (
+            <button
+              type="button"
+              className="topbar-demo-btn"
+              onClick={onDemo}
+              title="Return to default demo model"
+            >
+              ↶ Demo
+            </button>
+          )}
+        </div>
 
         <nav className="topbar-nav" aria-label="Site navigation">
           <button
