@@ -1,0 +1,8 @@
+[build]
+  command = "npm run build:example"
+  publish = "dist-inspector"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
