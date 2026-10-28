@@ -271,7 +271,7 @@ export function GimbalCameraTurret({
     // Zoomed out 25-30% more for wider field of view to easily track target
     const aspect = size.width / Math.max(1, size.height);
     const baseZ = aspect < 1.2 ? 14.2 : 11.2;
-    const baseY = 2.2;
+    const baseY = aspect < 1.2 ? 3.0 : 2.2;
     const basePos = new Vector3(0, baseY, baseZ);
 
     const perspCam = camera as unknown as { fov: number; updateProjectionMatrix: () => void };
@@ -301,8 +301,8 @@ export function GimbalCameraTurret({
 
     // Angular check for missile lock: ray passing through camera bore-sight reticle
     targetDir.current.copy(ballPosRef.current).sub(camera.position).normalize();
-    // On mobile, the bore-sight reticle is elevated to top 36% (NDC Y +0.28) so controls don't block it
-    const reticleNdcY = isMobile ? 0.28 : 0;
+    // On mobile, the bore-sight reticle is elevated to top 31% (NDC Y +0.38) so controls don't block it
+    const reticleNdcY = isMobile ? 0.38 : 0;
     const aimRay = aimForward.current.set(0, reticleNdcY, 0.5).unproject(camera).sub(camera.position).normalize();
     const angleRad = aimRay.angleTo(targetDir.current);
     const angleDeg = (angleRad * 180) / Math.PI;
@@ -366,7 +366,13 @@ export function ViewportDirector({
 
     let targetMesh: Mesh | null = null;
     scene.traverse((node) => {
-      if (node instanceof Mesh && node.userData._skPartId === focusRequest.partId) {
+      if (
+        node instanceof Mesh &&
+        (node.userData._skPartId === focusRequest.partId ||
+          node.name === focusRequest.partId ||
+          node.userData?.spatialId === focusRequest.partId ||
+          focusRequest.partId.endsWith(`/${node.name}`))
+      ) {
         targetMesh = node;
       }
     });
@@ -518,12 +524,20 @@ export function Playground({
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
   const [highlightedNoteId, setHighlightedNoteId] = useState<string | null>(null);
   const [pendingPoint, setPendingPoint] = useState<[number, number, number] | null>(null);
+  const [pendingWorldBeacon, setPendingWorldBeacon] = useState<[number, number, number] | null>(null);
   const [pendingTarget, setPendingTarget] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
   const [showAssembly, setShowAssembly] = useState(false);
   const [assemblyFilter, setAssemblyFilter] = useState('');
   const [tourPanelOpen, setTourPanelOpen] = useState(true);
   const [tourPanelMinimized, setTourPanelMinimized] = useState(false);
+  const [showPlacementHint, setShowPlacementHint] = useState(true);
+
+  // Auto-dismiss placement hint banner after 10 seconds
+  useEffect(() => {
+    const timer = setTimeout(() => setShowPlacementHint(false), 10000);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Mobile screen detection for responsive camera framing & model elevating
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
@@ -533,8 +547,8 @@ export function Playground({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const isMobileToolActive = isMobile && activeTool && activeTool !== 'inspect';
-  const mobileModelYOffset = isMobileToolActive ? 0.85 : 0;
+  const isMobileElevationTool = isMobile && activeTool && activeTool !== 'inspect' && activeTool !== 'lift';
+  const mobileModelYOffset = isMobileElevationTool ? 1.25 : 0;
 
   // Guided Feature Tour State
   const [tourActive, setTourActive] = useState(false);
@@ -600,7 +614,9 @@ export function Playground({
     setNotes((prev) => [...prev, newNote]);
     setDraftLabel('');
     setPendingPoint(null);
+    setPendingWorldBeacon(null);
     setPendingTarget(null);
+    setShowPlacementHint(false);
   }
 
   function handleDeleteNote(noteId: string) {
@@ -753,16 +769,17 @@ export function Playground({
     if (activeTool !== 'slicer' || !crossSectionEnabled) return undefined;
     if (sectionAxis === 'z') {
       const normal = new Vector3(0, -1, 0);
-      const constant = (sectionOffset + 1.0) * 1.4;
+      // Default offset 1.0 shows 100% full unclipped model (including valve handwheel at top)
+      const constant = sectionOffset * 2.45 + 2.4;
       return [new Plane(normal, constant)];
     }
     if (sectionAxis === 'x') {
       const normal = new Vector3(-1, 0, 0);
-      const constant = sectionOffset * 2.2 + 0.2;
+      const constant = sectionOffset * 2.6 + 0.6;
       return [new Plane(normal, constant)];
     }
     const normal = new Vector3(0, 0, -1);
-    const constant = sectionOffset * 2.2 + 0.2;
+    const constant = sectionOffset * 2.6 + 0.6;
     return [new Plane(normal, constant)];
   }, [activeTool, crossSectionEnabled, sectionAxis, sectionOffset]);
 
@@ -824,6 +841,7 @@ export function Playground({
       if (isMobile) {
         // Pure model exploration on mobile: no pending hotspot prompt or beacon
         setPendingPoint(null);
+        setPendingWorldBeacon(null);
         setPendingTarget(null);
         return;
       }
@@ -833,10 +851,15 @@ export function Playground({
       if (match) {
         setHighlightedNoteId(match.id);
         setPendingPoint(null);
+        setPendingWorldBeacon(null);
         setPendingTarget(null);
       } else {
+        // Mesh-local coordinates for Annotation pinning (dead accurate, immune to drift)
+        const localPos = hit.point.slice() as [number, number, number];
+        // World coordinates for temporary 3D beacon cursor
         const worldPos = (hit.worldPoint ?? hit.point).slice() as [number, number, number];
-        setPendingPoint(worldPos);
+        setPendingPoint(localPos);
+        setPendingWorldBeacon(worldPos);
         setPendingTarget(partId);
         setHighlightedNoteId(null);
       }
@@ -924,15 +947,11 @@ export function Playground({
         <span className="credit-icon">©</span>
         {activeTool === 'gimbal' ? (
           <span>
-            Model: <a href="https://sketchfab.com/ikagogava" target="_blank" rel="noreferrer">Basketball by Ika Gogava</a> (Sketchfab)
-          </span>
-        ) : model.id === 'pump' ? (
-          <span>
-            Model: <strong>PX–04 Demonstration Pump</strong> (SpatialKit)
+            Model from <a href="https://sketchfab.com/ikagogava" target="_blank" rel="noreferrer">Ika Gogava</a>
           </span>
         ) : (
           <span>
-            Model: <strong>{model.name}</strong> (Local preview)
+            Model from <strong>SpatialKit</strong>
           </span>
         )}
       </div>
@@ -944,7 +963,7 @@ export function Playground({
       )}
 
       {/* Hotspot Placement Instruction Banner (Desktop only) */}
-      {activeTool === 'inspect' && !tourActive && !isMobile && (
+      {activeTool === 'inspect' && !tourActive && !isMobile && showPlacementHint && (
         <div
           className="placement-banner"
           role="status"
@@ -1018,7 +1037,7 @@ export function Playground({
             style={{
               position: 'absolute',
               left: '50%',
-              top: isMobile ? '36%' : '50%',
+              top: isMobile ? '31%' : '50%',
               transform: 'translate(-50%, -50%)',
               width: 90,
               height: 90,
@@ -1184,8 +1203,8 @@ export function Playground({
               ))}
 
               {/* Active Locator Beacon when surface point is targeted (Desktop only) */}
-              {activeTool === 'inspect' && !isMobile && pendingPoint && (
-                <mesh position={pendingPoint}>
+              {activeTool === 'inspect' && !isMobile && pendingWorldBeacon && (
+                <mesh position={pendingWorldBeacon}>
                   <sphereGeometry args={[0.045, 16, 16]} />
                   <meshBasicMaterial color="#38bdf8" depthTest={false} />
                 </mesh>
@@ -1215,8 +1234,8 @@ export function Playground({
           target={
             activeTool === 'gimbal'
               ? [0, 2.0, 0]
-              : isMobileToolActive
-              ? [0, 0.48, 0]
+              : isMobileElevationTool
+              ? [0, 0.35, 0]
               : [0, 1.15, 0]
           }
           minDistance={1.8}
@@ -1228,8 +1247,8 @@ export function Playground({
         {activeTool !== 'gimbal' && (
           <ResponsiveCameraFraming
             controlsRef={controlsRef}
-            basePosition={isMobile ? [5.4, 3.2, 5.6] : [4.6, 2.5, 4.8]}
-            target={isMobileToolActive ? [0, 0.48, 0] : [0, 1.15, 0]}
+            basePosition={isMobile ? (isMobileElevationTool ? [5.4, 3.6, 5.6] : [5.4, 3.2, 5.6]) : [4.6, 2.5, 4.8]}
+            target={isMobileElevationTool ? [0, 0.35, 0] : [0, 1.15, 0]}
           />
         )}
 
@@ -1624,6 +1643,7 @@ export function Playground({
                   label="BEAM ORBIT"
                   formatValue={(v) => `${Math.round(v * 360)}°`}
                   showGraduations
+                  fullCircle
                 />
                 <div style={{ width: '100%', height: 1, background: 'rgba(255, 255, 255, 0.08)', margin: isMobile ? '8px 0 6px' : '14px 0 10px' }} />
                 <div style={{ width: '100%', padding: '0 4px' }}>

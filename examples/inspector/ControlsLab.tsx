@@ -45,85 +45,30 @@ function ControlCard({ index, number, title, description, tags, code, toggle3D, 
   );
 }
 
-/** Individual playing card with face, suit emblem, and crimson back. */
-function PlayingCard({ index, total, progress }: { index: number; total: number; progress: number }) {
-  // Cascading trigger threshold for each card
-  const start = (index / total) * 0.7;
-  const p = clamp((progress - start) / 0.3, 0, 1);
-
-  // Stacked starting position at progress = 0
-  const stackedY = -0.28 + index * 0.0075;
-
-  // Arc physics when falling / cascading across the gaming table
-  const spreadX = ((index - total / 2) / (total / 2)) * 1.6;
-  const spreadZ = -0.3 + (index / total) * 1.5;
-  const arcY = Math.sin(p * Math.PI) * 0.75;
-  const landedY = -0.28 + index * 0.0035;
-
-  const x = (1 - p) * 0 + p * spreadX;
-  const y = (1 - p) * stackedY + p * landedY + arcY;
-  const z = (1 - p) * 0 + p * spreadZ;
-
-  // Rotations
-  const rotX = (1 - p) * 0 + p * (0.12 + Math.sin(index * 0.7) * 0.08);
-  const rotY = (1 - p) * 0 + p * ((index - total / 2) * 0.07);
-  const rotZ = (1 - p) * 0 + p * (Math.sin(index * 0.85) * 0.18 + (1 - p) * 0.22);
-
-  const suit = ['♠', '♥', '♦', '♣'][index % 4];
-  const isRed = suit === '♥' || suit === '♦';
-
-  return (
-    <group position={[x, y, z]} rotation={[rotX, rotY, rotZ]}>
-      {/* Crisp White Card Body */}
-      <mesh castShadow receiveShadow>
-        <boxGeometry args={[0.58, 0.86, 0.006]} />
-        <meshStandardMaterial color="#fdfbf7" roughness={0.35} metalness={0.05} />
-      </mesh>
-      {/* Card Back: Royal Crimson pattern */}
-      <mesh position={[0, 0, -0.004]} rotation={[0, Math.PI, 0]}>
-        <planeGeometry args={[0.52, 0.8]} />
-        <meshStandardMaterial color="#991b1b" roughness={0.5} />
-      </mesh>
-      {/* Card Front: White inlay */}
-      <mesh position={[0, 0, 0.004]}>
-        <planeGeometry args={[0.52, 0.8]} />
-        <meshBasicMaterial color="#ffffff" />
-      </mesh>
-      {/* Front Emblem / Suit Pip */}
-      <mesh position={[0, 0, 0.005]}>
-        <planeGeometry args={[0.2, 0.2]} />
-        <meshBasicMaterial color={isRed ? '#dc2626' : '#0f172a'} />
-      </mesh>
-    </group>
-  );
-}
-
-/** 01 3D Stage: Deck of Cards Falling / Cascading along Timeline Scrub. */
-function DeckOfCardsViewer({ progress }: { progress: number }) {
-  const cardCount = 30;
+/** 01 3D Stage: Exploded Industrial Pump Assembly Scrub. */
+function ExplodedPumpViewer({ progress }: { progress: number }) {
   return (
     <div className="lab-3d-stage">
-      <Canvas camera={{ position: [0, 1.4, 2.8], fov: 44 }}>
-        <color attach="background" args={['#080e1a']} />
-        <ambientLight intensity={1.1} />
-        <directionalLight position={[4, 6, 4]} intensity={2.6} />
-        <directionalLight position={[-4, 3, -3]} intensity={1.1} color="#94a3b8" />
-
-        {/* Casino Green Felt Table Surface */}
-        <mesh position={[0, -0.3, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[10, 10]} />
-          <meshStandardMaterial color="#064e3b" roughness={0.85} metalness={0.1} />
-        </mesh>
-        <gridHelper args={[10, 20, '#042f24', '#064e3b']} position={[0, -0.295, 0]} />
-
-        {/* 30 Playing Cards Cascading */}
-        <group position={[0, 0, -0.2]}>
-          {Array.from({ length: cardCount }).map((_, i) => (
-            <PlayingCard key={i} index={i} total={cardCount} progress={progress} />
-          ))}
-        </group>
-
-        <BlenderControls target={[0, 0.1, 0]} minDistance={1.6} maxDistance={6} enableDamping />
+      <Canvas camera={{ position: [0, 1.2, 3.2], fov: 42 }}>
+        <color attach="background" args={['#0e1526']} />
+        <ambientLight intensity={1.2} />
+        <directionalLight position={[5, 7, 5]} intensity={2.6} />
+        <directionalLight position={[-4, 3, -3]} intensity={1.3} color="#94a3b8" />
+        <Suspense fallback={null}>
+          <SpatialProvider>
+            <group rotation={[0.15, progress * Math.PI * 0.75, 0]}>
+              <SelectableModel
+                src="/pump.glb"
+                modelId="pump-assembly"
+                explode={progress * 1.6}
+                fit={2.4}
+                position={[0, 0.1, 0]}
+              />
+            </group>
+          </SpatialProvider>
+        </Suspense>
+        <gridHelper args={[10, 20, '#1e293b', '#0f172a']} position={[0, -0.65, 0]} />
+        <BlenderControls target={[0, 0.25, 0]} minDistance={1.6} maxDistance={7} enableDamping />
       </Canvas>
     </div>
   );
@@ -732,6 +677,7 @@ export function TactileDial({
   label,
   formatValue,
   showGraduations = false,
+  fullCircle = false,
 }: {
   value: number;
   onChange: (value: number) => void;
@@ -742,6 +688,7 @@ export function TactileDial({
   label: string;
   formatValue?: (value: number) => string;
   showGraduations?: boolean;
+  fullCircle?: boolean;
 }) {
   return (
     <DialControl
@@ -750,6 +697,8 @@ export function TactileDial({
       min={min}
       max={max}
       step={step}
+      minAngle={fullCircle ? 0 : -135}
+      maxAngle={fullCircle ? 360 : 135}
       value={value}
       onChange={onChange}
       label={label}
@@ -758,8 +707,9 @@ export function TactileDial({
       {({ progress, angle, active }) => {
         const r = 40;
         const circumference = 2 * Math.PI * r;
-        const arcLength = circumference * 0.75;
-        const dashOffset = arcLength * (1 - progress);
+        const arcLength = fullCircle ? circumference : circumference * 0.75;
+        const dashOffset = fullCircle ? circumference * (1 - progress) : arcLength * (1 - progress);
+        const rotorAngle = fullCircle ? progress * 360 : angle;
         return (
           <div className={`tactile-dial-inner ${active ? 'is-active' : ''}`}>
             <svg className="tactile-dial-svg" viewBox="0 0 100 100" aria-hidden="true">
@@ -770,9 +720,9 @@ export function TactileDial({
                 fill="none"
                 stroke="var(--border-2)"
                 strokeWidth="4"
-                strokeDasharray={`${arcLength} ${circumference}`}
-                strokeLinecap="round"
-                transform="rotate(135 50 50)"
+                strokeDasharray={fullCircle ? undefined : `${arcLength} ${circumference}`}
+                strokeLinecap={fullCircle ? undefined : 'round'}
+                transform={fullCircle ? undefined : 'rotate(135 50 50)'}
               />
               <circle
                 cx="50"
@@ -781,31 +731,33 @@ export function TactileDial({
                 fill="none"
                 stroke="var(--accent)"
                 strokeWidth="4.5"
-                strokeDasharray={`${arcLength} ${circumference}`}
+                strokeDasharray={fullCircle ? `${circumference} ${circumference}` : `${arcLength} ${circumference}`}
                 strokeDashoffset={dashOffset}
                 strokeLinecap="round"
-                transform="rotate(135 50 50)"
+                transform={fullCircle ? 'rotate(-90 50 50)' : 'rotate(135 50 50)'}
               />
               {/* Reactive Dial Number Graduations that illuminate when the needle points at them */}
-              {showGraduations && [0, 25, 50, 75, 100].map((val) => {
-                const isNear = Math.abs(value - val) <= 4;
-                const gradAngle = -135 + (val / 100) * 270;
+              {showGraduations && (fullCircle ? [0, 25, 50, 75] : [0, 25, 50, 75, 100]).map((val) => {
+                const currentPct = progress * 100;
+                const isNear = Math.abs(currentPct - val) <= 6;
+                const gradAngle = fullCircle ? -90 + (val / 100) * 360 : -135 + (val / 100) * 270;
                 const rad = (gradAngle * Math.PI) / 180;
                 const x = 50 + Math.cos(rad) * 44;
                 const y = 50 + Math.sin(rad) * 44;
+                const displayVal = fullCircle ? `${Math.round(val * 3.6)}°` : val;
                 return (
                   <text
                     key={val}
                     x={x}
                     y={y + 2.5}
                     textAnchor="middle"
-                    fontSize="6.5"
+                    fontSize={fullCircle ? '6' : '6.5'}
                     fontFamily="'JetBrains Mono', monospace"
                     fontWeight={isNear ? '800' : '500'}
                     fill={isNear ? '#2dd4bf' : '#64748b'}
                     style={{ transition: 'fill .12s, font-weight .12s' }}
                   >
-                    {val}
+                    {displayVal}
                   </text>
                 );
               })}
@@ -814,7 +766,7 @@ export function TactileDial({
             <div
               className="tactile-dial-rotor"
               style={{
-                transform: `rotate(${angle}deg)`,
+                transform: `rotate(${rotorAngle}deg)`,
                 transition: active ? 'none' : 'transform .05s ease-out',
               }}
             >
@@ -1133,21 +1085,21 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
       </section>
 
       <section className="lab-grid" aria-label="Interactive control experiments">
-        {/* 01 Timeline Scrub -> Deck of Cards Falling / Cascading */}
+        {/* 01 Mechanical Scrubber Lever -> Exploded Industrial Pump */}
         <ControlCard
           index={0}
           number="01"
-          title="Timeline scrub"
-          description="Drag the mechanical scrubbing lever to cascade and fan the deck of playing cards in real-time 3D."
-          tags={['TIMELINE', active3D['01'] ? '3D CARDS' : 'LINKAGE']}
+          title="Timeline scrubber"
+          description="Drag the mechanical slider lever to scrub the procedural exploded view of the industrial pump assembly."
+          tags={['EXPLODED VIEW', active3D['01'] ? '3D PUMP' : 'LINKAGE']}
           toggle3D={{
             active: !!active3D['01'],
             onToggle: () => setActive3D((prev) => ({ ...prev, '01': !prev['01'] })),
           }}
-          code={`const [progress, setProgress] = useState(0.5);\n<HorizontalMechanicalLever value={progress} onChange={setProgress} />\n// Cascade cards: card[i].arc = Math.sin(progress * Math.PI)`}
+          code={`const [timeline, setTimeline] = useState(0.25);\n<HorizontalMechanicalLever value={timeline} onChange={setTimeline} />\n<SelectableModel src="/pump.glb" explode={timeline * 1.6} />`}
         >
           {active3D['01'] ? (
-            <DeckOfCardsViewer progress={pendulum} />
+            <ExplodedPumpViewer progress={pendulum} />
           ) : (
             <div className="pendulum-rig">
               <div className="pendulum-pin" />
@@ -1155,7 +1107,7 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
             </div>
           )}
           <div className="lab-control-row">
-            <HorizontalMechanicalLever value={pendulum} onChange={setPendulum} label="Cards cascade progress" />
+            <HorizontalMechanicalLever value={pendulum} onChange={setPendulum} label="Pump assembly exploded view lever" />
             <output>{Math.round(pendulum * 100)}%</output>
           </div>
         </ControlCard>
@@ -1432,10 +1384,9 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
 
           {active3D['07'] && (
             <div className="tactile-joystick-wrap">
-              <TactileJoystick size={124} value={joystick} onChange={setJoystick} label="Targeting Gimbal" />
+              <TactileJoystick size={106} value={joystick} onChange={setJoystick} label="Targeting Gimbal" />
               <div className="joystick-telemetry-bar">
-                <span>AIM X: <b>{joystick.x.toFixed(2)}</b></span>
-                <span>AIM Y: <b>{joystick.y.toFixed(2)}</b></span>
+                <span>AIM: <b>{joystick.x.toFixed(1)}, {joystick.y.toFixed(1)}</b></span>
                 <span>DEFLECTION: <b>{(Math.hypot(joystick.x, joystick.y) * 100).toFixed(0)}%</b></span>
               </div>
             </div>
@@ -1479,6 +1430,8 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
               onChange={setLight}
               label="Inspection light dimmer"
               formatValue={percent}
+              fullCircle
+              showGraduations
             />
             <div className="light-telemetry-col">
               <span className="light-dimmer-title">DIMMER CRANK</span>

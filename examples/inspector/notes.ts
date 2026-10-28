@@ -1,6 +1,6 @@
 export interface Note { id: string; target: string; label: string; point?: [number, number, number] }
 export const STORAGE_KEY = 'spatialkit.inspector.notes.v1';
-export const INITIAL_NOTES: Note[] = [{ id: 'starter-note', target: 'pump/pressure-valve', label: 'Inspect this seal' }];
+export const INITIAL_NOTES: Note[] = [{ id: 'starter-note', target: 'pump/pressure-valve', label: 'Seal' }];
 
 export function parseNotes(raw: string, modelId = 'pump'): Note[] {
   const value: unknown = JSON.parse(raw);
