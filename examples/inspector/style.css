@@ -2030,10 +2030,11 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
 
   /* Dock becomes horizontally scrollable without cluttering the screen */
   .playground-dock-container {
-    bottom: 12px;
+    bottom: 58px;
     max-width: calc(100% - 16px);
     left: 50%;
     transform: translateX(-50%);
+    z-index: 55;
   }
   .playground-floating-dock {
     overflow-x: auto;
@@ -2059,27 +2060,31 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
     flex-shrink: 0;
   }
 
-  /* Active console docks above the dock on mobile so dock remains accessible */
+  /* Active console docks above the elevated dock on mobile, hugging the control widget */
   .playground-active-console {
     position: fixed;
-    left: 10px;
-    right: 10px;
-    bottom: 68px;
-    width: auto;
-    max-width: none;
-    min-width: 0;
-    border-radius: 16px;
-    padding: 12px 14px 16px;
+    left: 12px;
+    right: 12px;
+    margin: 0 auto;
+    bottom: 110px;
+    width: fit-content;
+    max-width: min(320px, calc(100vw - 24px));
+    min-width: 240px;
+    border-radius: 14px;
+    padding: 8px 12px 10px;
     box-shadow: 0 10px 36px rgba(0, 0, 0, 0.85);
     border: 1px solid rgba(45, 212, 191, 0.35);
     z-index: 60;
-    max-height: 52vh;
+    max-height: 40vh;
     overflow-y: auto;
     animation: console-sheet-up 0.24s cubic-bezier(0.16, 1, 0.3, 1);
   }
+  .playground-active-console.inspector-console {
+    display: none !important;
+  }
   .playground-active-console.minimized {
-    max-height: 52px;
-    padding: 10px 16px;
+    max-height: 44px;
+    padding: 8px 14px;
     overflow: hidden;
     cursor: pointer;
     background: rgba(15, 23, 42, 0.98);
@@ -2087,17 +2092,27 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   .playground-active-console.minimized .console-body {
     display: none !important;
   }
+  .console-drag-handle {
+    display: none;
+  }
+  .console-header {
+    margin-bottom: 6px;
+  }
+  .console-header-title strong {
+    font-size: 10.5px;
+  }
+  .console-header-title span {
+    font-size: 8.5px;
+  }
+  .desktop-only {
+    display: none !important;
+  }
+  .playground-credit-badge {
+    display: none !important;
+  }
   @keyframes console-sheet-up {
     from { transform: translateY(100%); }
     to { transform: translateY(0); }
-  }
-  .console-drag-handle {
-    width: 36px;
-    height: 4px;
-    background: rgba(255, 255, 255, 0.25);
-    border-radius: 2px;
-    margin: -4px auto 8px;
-    cursor: pointer;
   }
 }
 
@@ -4319,12 +4334,7 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
 
 @media (max-width: 768px) {
   .inspector-tour-panel {
-    top: 48px;
-    right: 10px;
-    left: 10px;
-    width: auto;
-    max-height: 38vh;
-    z-index: 60;
+    display: none !important;
   }
 }
 

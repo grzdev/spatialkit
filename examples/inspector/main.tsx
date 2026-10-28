@@ -868,10 +868,10 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
             Controls lab
           </button>
 
-          <span className="topbar-sep" aria-hidden="true" />
+          <span className="topbar-sep desktop-only" aria-hidden="true" />
 
           <button
-            className={`code-button-inline ${codeOpen ? 'active' : ''}`}
+            className={`code-button-inline desktop-only ${codeOpen ? 'active' : ''}`}
             onClick={() => setCodeOpen((o) => !o)}
             aria-expanded={codeOpen}
             aria-controls="code-panel-region"

@@ -521,6 +521,17 @@ export function Playground({
   const [tourPanelOpen, setTourPanelOpen] = useState(true);
   const [tourPanelMinimized, setTourPanelMinimized] = useState(false);
 
+  // Mobile screen detection for responsive camera framing & model elevating
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const isMobileToolActive = isMobile && activeTool && activeTool !== 'inspect';
+  const mobileModelYOffset = isMobileToolActive ? 0.52 : 0;
+
   // Guided Feature Tour State
   const [tourActive, setTourActive] = useState(false);
   const [tourIndex, setTourIndex] = useState(0);
@@ -1107,70 +1118,72 @@ export function Playground({
 
         <Suspense fallback={<Html center><div className="scene-message">Preparing Playground…</div></Html>}>
           <SpatialProvider>
-            <InteractiveModelRig
-              activeControl={activeModelControl}
-              lightDial={lightDial}
-              lightBrightness={lightBrightness}
-              liftHeight={liftHeight}
-              ballPositionRef={ballPositionRef}
-            >
-              {activeTool === 'gimbal' ? (
-                /* Dynamic Target: Basketball flying across 3D space */
-                <SelectableModel
-                  src="/models/basketball.glb"
-                  modelId="basketball"
-                  fit={1.6}
-                  onSurfaceClick={handleSurfaceClick}
+            <group position={[0, mobileModelYOffset, 0]}>
+              <InteractiveModelRig
+                activeControl={activeModelControl}
+                lightDial={lightDial}
+                lightBrightness={lightBrightness}
+                liftHeight={liftHeight}
+                ballPositionRef={ballPositionRef}
+              >
+                {activeTool === 'gimbal' ? (
+                  /* Dynamic Target: Basketball flying across 3D space */
+                  <SelectableModel
+                    src="/models/basketball.glb"
+                    modelId="basketball"
+                    fit={1.6}
+                    onSurfaceClick={handleSurfaceClick}
+                  />
+                ) : model.object ? (
+                  <SelectableObject
+                    object={model.object}
+                    animations={model.animations}
+                    animationProgress={model.hasAnimations ? animationProgress : undefined}
+                    explode={proceduralExplode}
+                    clippingPlanes={clippingPlanes}
+                    modelId={model.id}
+                    fit={MODEL_FIT}
+                    onSurfaceClick={handleSurfaceClick}
+                  />
+                ) : (
+                  <SelectableModel
+                    src="/pump.glb"
+                    modelId="pump"
+                    fit={MODEL_FIT}
+                    animationProgress={animationProgress}
+                    explode={proceduralExplode}
+                    clippingPlanes={clippingPlanes}
+                    onSurfaceClick={handleSurfaceClick}
+                  />
+                )}
+              </InteractiveModelRig>
+
+              <SceneBridge onParts={setParts} selectRef={selectRef} />
+
+              {/* 3D Hotspot Annotations */}
+              {activeTool === 'inspect' && notes.map((note, i) => (
+                <Annotation
+                  key={note.id}
+                  target={note.target}
+                  label={note.label}
+                  point={note.point}
+                  offset={annotationOffset(notes, i)}
+                  className="model-annotation"
                 />
-              ) : model.object ? (
-                <SelectableObject
-                  object={model.object}
-                  animations={model.animations}
-                  animationProgress={model.hasAnimations ? animationProgress : undefined}
-                  explode={proceduralExplode}
-                  clippingPlanes={clippingPlanes}
-                  modelId={model.id}
-                  fit={MODEL_FIT}
-                  onSurfaceClick={handleSurfaceClick}
-                />
-              ) : (
-                <SelectableModel
-                  src="/pump.glb"
-                  modelId="pump"
-                  fit={MODEL_FIT}
-                  animationProgress={animationProgress}
-                  explode={proceduralExplode}
-                  clippingPlanes={clippingPlanes}
-                  onSurfaceClick={handleSurfaceClick}
-                />
+              ))}
+
+              {/* Active Locator Beacon when surface point is targeted */}
+              {activeTool === 'inspect' && pendingPoint && (
+                <mesh position={pendingPoint}>
+                  <sphereGeometry args={[0.045, 16, 16]} />
+                  <meshBasicMaterial color="#38bdf8" depthTest={false} />
+                </mesh>
               )}
-            </InteractiveModelRig>
-
-            <SceneBridge onParts={setParts} selectRef={selectRef} />
-
-            {/* 3D Hotspot Annotations */}
-            {activeTool === 'inspect' && notes.map((note, i) => (
-              <Annotation
-                key={note.id}
-                target={note.target}
-                label={note.label}
-                point={note.point}
-                offset={annotationOffset(notes, i)}
-                className="model-annotation"
-              />
-            ))}
-
-            {/* Active Locator Beacon when surface point is targeted */}
-            {activeTool === 'inspect' && pendingPoint && (
-              <mesh position={pendingPoint}>
-                <sphereGeometry args={[0.045, 16, 16]} />
-                <meshBasicMaterial color="#38bdf8" depthTest={false} />
-              </mesh>
-            )}
+            </group>
           </SpatialProvider>
 
           <ContactShadows
-            position={[0, -0.012, 0]}
+            position={[0, mobileModelYOffset - 0.012, 0]}
             opacity={isSpotlightMode ? 0.2 : env.shadowOpacity}
             scale={14}
             blur={2.4}
@@ -1181,14 +1194,20 @@ export function Playground({
         </Suspense>
 
         {showGrid && !isSpotlightMode && env.showGrid && (
-          <gridHelper args={[20, 40, env.gridPrimary, env.gridSecondary]} position={[0, -0.025, 0]} />
+          <gridHelper args={[20, 40, env.gridPrimary, env.gridSecondary]} position={[0, mobileModelYOffset - 0.025, 0]} />
         )}
 
         <BlenderControls
           ref={controlsRef}
           makeDefault
           enabled={activeTool !== 'gimbal'}
-          target={activeTool === 'gimbal' ? [0, 2.0, 0] : [0, 1.15, 0]}
+          target={
+            activeTool === 'gimbal'
+              ? [0, 2.0, 0]
+              : isMobileToolActive
+              ? [0, 0.72, 0]
+              : [0, 1.15, 0]
+          }
           minDistance={1.8}
           maxDistance={28}
           enableDamping
@@ -1198,8 +1217,8 @@ export function Playground({
         {activeTool !== 'gimbal' && (
           <ResponsiveCameraFraming
             controlsRef={controlsRef}
-            basePosition={[4.6, 2.5, 4.8]}
-            target={[0, 1.15, 0]}
+            basePosition={isMobile ? [5.2, 2.8, 5.4] : [4.6, 2.5, 4.8]}
+            target={isMobileToolActive ? [0, 0.72, 0] : [0, 1.15, 0]}
           />
         )}
 
@@ -1399,10 +1418,10 @@ export function Playground({
         </aside>
       )}
 
-      {/* ─── Floating Tool Console (Docked to Bottom-Right on Desktop, Bottom Sheet on Mobile) ─── */}
+      {/* ─── Floating Tool Console (Docked to Bottom-Right on Desktop, Compact on Mobile) ─── */}
       {activeTool && (
         <aside
-          className={`playground-active-console ${consoleMinimized ? 'minimized' : ''}`}
+          className={`playground-active-console ${consoleMinimized ? 'minimized' : ''} ${activeTool === 'inspect' ? 'inspector-console' : ''}`}
           role="region"
           aria-label="Active Tool Console"
         >
@@ -1589,12 +1608,12 @@ export function Playground({
                 <TactileDial
                   value={lightDial}
                   onChange={setLightDial}
-                  size={92}
+                  size={isMobile ? 80 : 92}
                   label="BEAM ORBIT"
                   formatValue={(v) => `${Math.round(v * 360)}°`}
                   showGraduations
                 />
-                <div style={{ width: '100%', height: 1, background: 'rgba(255, 255, 255, 0.08)', margin: '14px 0 10px' }} />
+                <div style={{ width: '100%', height: 1, background: 'rgba(255, 255, 255, 0.08)', margin: isMobile ? '8px 0 6px' : '14px 0 10px' }} />
                 <div style={{ width: '100%', padding: '0 4px' }}>
                   <HorizontalMechanicalLever
                     value={lightBrightness}
@@ -1607,14 +1626,14 @@ export function Playground({
 
             {/* Flight Gimbal Joystick Widget + Fixed Background Color Swatches in a straight line */}
             {activeTool === 'gimbal' && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', gap: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', gap: isMobile ? 8 : 12 }}>
                 <TactileJoystick
                   value={targetAim}
                   onChange={setTargetAim}
-                  size={116}
+                  size={isMobile ? 96 : 116}
                   label="FLIGHT GIMBAL"
                 />
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: '100%', paddingTop: 8, borderTop: '1px solid rgba(148, 163, 184, 0.15)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: '100%', paddingTop: 6, borderTop: '1px solid rgba(148, 163, 184, 0.15)' }}>
                   <span style={{ font: '700 9px "JetBrains Mono", monospace', color: '#64748b', letterSpacing: '0.6px' }}>
                     BACKGROUND COLOR
                   </span>
@@ -1654,7 +1673,7 @@ export function Playground({
 
             {/* Hydraulic Lift Lever Widget with generous padding top & bottom */}
             {activeTool === 'lift' && (
-              <div style={{ paddingTop: 24, paddingBottom: 24, minHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ paddingTop: isMobile ? 8 : 24, paddingBottom: isMobile ? 8 : 24, minHeight: isMobile ? 150 : 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <PullLever
                   value={liftHeight}
                   onChange={setLiftHeight}
