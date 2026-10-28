@@ -518,6 +518,8 @@ export function Playground({
   const [draftLabel, setDraftLabel] = useState('');
   const [showAssembly, setShowAssembly] = useState(false);
   const [assemblyFilter, setAssemblyFilter] = useState('');
+  const [tourPanelOpen, setTourPanelOpen] = useState(true);
+  const [tourPanelMinimized, setTourPanelMinimized] = useState(false);
 
   // Guided Feature Tour State
   const [tourActive, setTourActive] = useState(false);
@@ -693,19 +695,19 @@ export function Playground({
   const [sectionAxis, setSectionAxis] = useState<'x' | 'y' | 'z'>('z');
   const [sectionOffset, setSectionOffset] = useState(1.0);
 
-  // Tool Selection with strict state isolation (no feature bleeding)
+  // Tool Selection with immediate single-tap activation (no double-click toggle bugs)
   function selectTool(toolName: string) {
-    setActiveTool((prev) => {
-      const next = prev === toolName ? null : toolName;
-      setCrossSectionEnabled(next === 'slicer');
-      if (next !== 'inspect') {
-        setPendingPoint(null);
-        setPendingTarget(null);
-        setHighlightedNoteId(null);
-        setTourActive(false);
-      }
-      return next;
-    });
+    setActiveTool(toolName);
+    setConsoleMinimized(false);
+    setCrossSectionEnabled(toolName === 'slicer');
+    if (toolName !== 'inspect') {
+      setPendingPoint(null);
+      setPendingTarget(null);
+      setHighlightedNoteId(null);
+      setTourActive(false);
+    } else {
+      setTourPanelOpen(true);
+    }
   }
 
   const env = ENVIRONMENT_PRESETS[envPreset];
@@ -1214,6 +1216,189 @@ export function Playground({
         <ViewportDirector turntable={turntable} focusRequest={focusRequest} controlsRef={controlsRef} />
       </Canvas>
 
+      {/* ─── Inspector Sidecard 1: Hotspots, Guided Tour & Assembly Dropdown (Separate Upper Div on Right) ─── */}
+      {activeTool === 'inspect' && tourPanelOpen && (
+        <aside
+          className={`inspector-tour-panel ${tourPanelMinimized ? 'minimized' : ''}`}
+          role="region"
+          aria-label="Hotspots and Guided Tour"
+        >
+          <div className="console-header">
+            <div
+              className="console-header-title"
+              onClick={() => setTourPanelMinimized((m) => !m)}
+              style={{ cursor: 'pointer' }}
+            >
+              <strong>✦ HOTSPOTS & TOUR</strong>
+              <span>{notes.length} STOPS · {parts.length} PARTS</span>
+            </div>
+            <div className="console-header-actions">
+              <button
+                type="button"
+                className="console-minimize-btn"
+                onClick={() => setTourPanelMinimized((m) => !m)}
+                title={tourPanelMinimized ? 'Expand panel' : 'Drop panel down'}
+              >
+                {tourPanelMinimized ? '▲' : '▼'}
+              </button>
+              <button
+                type="button"
+                className="console-close-btn"
+                onClick={() => setTourPanelOpen(false)}
+                aria-label="Close hotspots and tour panel"
+                title="Close panel"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+
+          {!tourPanelMinimized && (
+            <div className="tour-panel-body">
+              {/* Hotspots list with active selection highlight */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+                <div className="inspector-section-label">
+                  <span>SAVED HOTSPOTS ({notes.length})</span>
+                  {selectedPartId && (
+                    <span style={{ color: '#38bdf8', fontSize: 9.5 }}>
+                      ACTIVE: {selectedPartId.replace(/^[^/]+\//, '')}
+                    </span>
+                  )}
+                </div>
+
+                {notes.length > 0 ? (
+                  <div className="inspector-notes-scroll">
+                    {notes.map((note) => {
+                      const isMatch = highlightedNoteId === note.id || selectedPartId === note.target;
+                      return (
+                        <div
+                          key={note.id}
+                          className={`inspector-note-card ${isMatch ? 'active-highlight' : ''}`}
+                          onClick={() => {
+                            setSelectedPartId(note.target);
+                            setHighlightedNoteId(note.id);
+                            selectRef.current(note.target);
+                            triggerCameraFocus(note.target, note.point);
+                          }}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1, gap: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span className="note-part-badge">{note.target.replace(/^[^/]+\//, '')}</span>
+                              {isMatch && <span className="note-selected-tag">● ACTIVE</span>}
+                            </div>
+                            <span className="note-label-text">{note.label}</span>
+                          </div>
+                          <button
+                            type="button"
+                            className="inspector-note-delete"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteNote(note.id);
+                              if (highlightedNoteId === note.id) setHighlightedNoteId(null);
+                            }}
+                            title="Delete hotspot"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="inspector-empty-notes">
+                    No hotspots placed yet. Click on the model to place a hotspot.
+                  </div>
+                )}
+              </div>
+
+              {/* Guided Tour Launcher (with fast 3.2s transition rhythm) */}
+              <div style={{ width: '100%' }}>
+                {tourStops.length >= 2 ? (
+                  <button
+                    type="button"
+                    className={`inspector-tour-toggle-btn ${tourActive ? 'active' : ''}`}
+                    onClick={() => setTourActive((a) => !a)}
+                  >
+                    <span>{tourActive ? '⏹ Exit Tour' : '▶ Start Guided Feature Tour'}</span>
+                    <span style={{ fontSize: 10, opacity: 0.85 }}>({tourStops.length} stops · 3s pace)</span>
+                  </button>
+                ) : (
+                  <div className="inspector-tour-locked-banner">
+                    Add {2 - tourStops.length} more hotspot{2 - tourStops.length === 1 ? '' : 's'} to unlock guided tour
+                  </div>
+                )}
+              </div>
+
+              {/* Closeable Assembly Dropdown with search filter */}
+              <div className="inspector-assembly-section">
+                <button
+                  type="button"
+                  className={`inspector-assembly-header-btn ${showAssembly ? 'open' : ''}`}
+                  onClick={() => setShowAssembly((s) => !s)}
+                >
+                  <span>✦ Assembly Tree ({parts.length} parts)</span>
+                  <span className="assembly-toggle-indicator">{showAssembly ? 'Hide ▲' : 'Open ▼'}</span>
+                </button>
+
+                {showAssembly && (
+                  <div className="inspector-assembly-list">
+                    <div className="assembly-search-input-wrap">
+                      <input
+                        type="text"
+                        className="assembly-search-mini"
+                        placeholder="Filter parts…"
+                        value={assemblyFilter}
+                        onChange={(e) => setAssemblyFilter(e.target.value)}
+                      />
+                      {assemblyFilter && (
+                        <button
+                          type="button"
+                          className="assembly-search-clear"
+                          onClick={() => setAssemblyFilter('')}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                    <div className="assembly-scroll-container">
+                      {parts
+                        .filter((p) => {
+                          const name = String(p.metadata?.label ?? p.name).toLowerCase();
+                          return !assemblyFilter || name.includes(assemblyFilter.toLowerCase()) || p.id.toLowerCase().includes(assemblyFilter.toLowerCase());
+                        })
+                        .map((part) => {
+                          const isSelected = selectedPartId === part.id;
+                          const hasNote = notes.some((n) => n.target === part.id);
+                          return (
+                            <button
+                              key={part.id}
+                              type="button"
+                              className={`assembly-part-item ${isSelected ? 'selected' : ''}`}
+                              onClick={() => {
+                                setSelectedPartId(part.id);
+                                selectRef.current(part.id);
+                                triggerCameraFocus(part.id);
+                                const match = notes.find((n) => n.target === part.id);
+                                setHighlightedNoteId(match ? match.id : null);
+                              }}
+                            >
+                              <span className="part-mesh-icon">⬡</span>
+                              <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {String(part.metadata?.label ?? part.name)}
+                              </span>
+                              {hasNote && <span className="assembly-note-dot" title="Has hotspot">●</span>}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </aside>
+      )}
+
       {/* ─── Floating Tool Console (Docked to Bottom-Right on Desktop, Bottom Sheet on Mobile) ─── */}
       {activeTool && (
         <aside
@@ -1234,7 +1419,7 @@ export function Playground({
               style={{ cursor: 'pointer' }}
             >
               <strong>
-                {activeTool === 'inspect' && '✦ 3D HOTSPOT & TOUR INSPECTOR'}
+                {activeTool === 'inspect' && '✦ 3D HOTSPOT & ASSET INSPECTOR'}
                 {activeTool === 'light' && '✦ INSPECTION SPOTLIGHT RIG'}
                 {activeTool === 'gimbal' && '✦ 3D FLIGHT GIMBAL TRACKER'}
                 {activeTool === 'lift' && '✦ HYDRAULIC LIFT PLATFORM'}
@@ -1243,7 +1428,7 @@ export function Playground({
                 {activeTool === 'slicer' && '✦ CROSS-SECTION SLICING PLANE'}
               </strong>
               <span>
-                {activeTool === 'inspect' && `${notes.length} HOTSPOT${notes.length === 1 ? '' : 'S'} · ${parts.length} PARTS`}
+                {activeTool === 'inspect' && `${notes.length} HOTSPOT${notes.length === 1 ? '' : 'S'} SAVED · EXPORT / ATTACH`}
                 {activeTool === 'light' && `ORBIT: ${Math.round(lightDial * 360)}° · BRIGHTNESS: ${Math.round(lightBrightness * 100)}%`}
                 {activeTool === 'gimbal' && `AIM: [${(targetAim.x * 100).toFixed(0)}, ${(targetAim.y * 100).toFixed(0)}] · ${isTargetLocked ? 'LOCKED' : 'TRACKING'} · COLOR: ${gimbalBg}`}
                 {activeTool === 'lift' && `HEIGHT: ${(0.08 + liftHeight * 3.4).toFixed(2)}m`}
@@ -1288,9 +1473,24 @@ export function Playground({
               alignItems: 'center',
             }}
           >
-            {/* 3D Inspector: Hotspots, Guided Tour, Closeable Assembly, & Export/Import */}
+            {/* 3D Inspector: Contextual Hotspot Creator & Persistence / Export Suite */}
             {activeTool === 'inspect' && (
               <div className="inspector-console-wrap" style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {/* Quick button to reopen Tour & Hotspots panel if user closed it */}
+                {!tourPanelOpen && (
+                  <button
+                    type="button"
+                    className="inspector-reopen-panel-btn"
+                    onClick={() => {
+                      setTourPanelOpen(true);
+                      setTourPanelMinimized(false);
+                    }}
+                  >
+                    <span>✦ Show Hotspots & Tour Panel</span>
+                    <span style={{ fontSize: 10 }}>({notes.length} stops)</span>
+                  </button>
+                )}
+
                 {/* 1. Hotspot Input Box (Contextual: Appears when user clicks surface to add a hotspot) */}
                 {pendingPoint ? (
                   <div className="inspector-anchor-box">
@@ -1335,151 +1535,11 @@ export function Playground({
                   </div>
                 ) : (
                   <div className="inspector-hint-pill">
-                    <span>💡 Click any part on the model to highlight or drop a hotspot</span>
+                    <span>💡 Click any part on the model to attach a hotspot</span>
                   </div>
                 )}
 
-                {/* 2. Hotspots List with live selection highlighting */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
-                  <div className="inspector-section-label">
-                    <span>HOTSPOTS ({notes.length})</span>
-                    {selectedPartId && (
-                      <span style={{ color: '#38bdf8', fontSize: 9.5 }}>
-                        SELECTED: {selectedPartId.replace(/^[^/]+\//, '')}
-                      </span>
-                    )}
-                  </div>
-
-                  {notes.length > 0 ? (
-                    <div className="inspector-notes-scroll">
-                      {notes.map((note) => {
-                        const isMatch = highlightedNoteId === note.id || selectedPartId === note.target;
-                        return (
-                          <div
-                            key={note.id}
-                            className={`inspector-note-card ${isMatch ? 'active-highlight' : ''}`}
-                            onClick={() => {
-                              setSelectedPartId(note.target);
-                              setHighlightedNoteId(note.id);
-                              selectRef.current(note.target);
-                              triggerCameraFocus(note.target, note.point);
-                            }}
-                          >
-                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1, gap: 1 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span className="note-part-badge">{note.target.replace(/^[^/]+\//, '')}</span>
-                                {isMatch && <span className="note-selected-tag">● ACTIVE</span>}
-                              </div>
-                              <span className="note-label-text">{note.label}</span>
-                            </div>
-                            <button
-                              type="button"
-                              className="inspector-note-delete"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteNote(note.id);
-                                if (highlightedNoteId === note.id) setHighlightedNoteId(null);
-                              }}
-                              title="Delete hotspot"
-                            >
-                              ×
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="inspector-empty-notes">
-                      No hotspots placed yet. Click on the model to add your first point.
-                    </div>
-                  )}
-                </div>
-
-                {/* 3. Guided Tour Launcher (with fast 3.2s transition rhythm) */}
-                <div style={{ width: '100%' }}>
-                  {tourStops.length >= 2 ? (
-                    <button
-                      type="button"
-                      className={`inspector-tour-toggle-btn ${tourActive ? 'active' : ''}`}
-                      onClick={() => setTourActive((a) => !a)}
-                    >
-                      <span>{tourActive ? '⏹ Exit Tour' : '▶ Start Guided Feature Tour'}</span>
-                      <span style={{ fontSize: 10, opacity: 0.85 }}>({tourStops.length} stops · 3s pace)</span>
-                    </button>
-                  ) : (
-                    <div className="inspector-tour-locked-banner">
-                      Add {2 - tourStops.length} more hotspot{2 - tourStops.length === 1 ? '' : 's'} to unlock guided tour
-                    </div>
-                  )}
-                </div>
-
-                {/* 4. Closeable Assembly Dropdown with search filter */}
-                <div className="inspector-assembly-section">
-                  <button
-                    type="button"
-                    className={`inspector-assembly-header-btn ${showAssembly ? 'open' : ''}`}
-                    onClick={() => setShowAssembly((s) => !s)}
-                  >
-                    <span>✦ Assembly Tree ({parts.length} parts)</span>
-                    <span className="assembly-toggle-indicator">{showAssembly ? 'Hide ▲' : 'Open ▼'}</span>
-                  </button>
-
-                  {showAssembly && (
-                    <div className="inspector-assembly-list">
-                      <div className="assembly-search-input-wrap">
-                        <input
-                          type="text"
-                          className="assembly-search-mini"
-                          placeholder="Filter parts…"
-                          value={assemblyFilter}
-                          onChange={(e) => setAssemblyFilter(e.target.value)}
-                        />
-                        {assemblyFilter && (
-                          <button
-                            type="button"
-                            className="assembly-search-clear"
-                            onClick={() => setAssemblyFilter('')}
-                          >
-                            ×
-                          </button>
-                        )}
-                      </div>
-                      <div className="assembly-scroll-container">
-                        {parts
-                          .filter((p) => {
-                            const name = String(p.metadata?.label ?? p.name).toLowerCase();
-                            return !assemblyFilter || name.includes(assemblyFilter.toLowerCase()) || p.id.toLowerCase().includes(assemblyFilter.toLowerCase());
-                          })
-                          .map((part) => {
-                            const isSelected = selectedPartId === part.id;
-                            const hasNote = notes.some((n) => n.target === part.id);
-                            return (
-                              <button
-                                key={part.id}
-                                type="button"
-                                className={`assembly-part-item ${isSelected ? 'selected' : ''}`}
-                                onClick={() => {
-                                  setSelectedPartId(part.id);
-                                  selectRef.current(part.id);
-                                  triggerCameraFocus(part.id);
-                                  const match = notes.find((n) => n.target === part.id);
-                                  setHighlightedNoteId(match ? match.id : null);
-                                }}
-                              >
-                                <span className="part-mesh-icon">⬡</span>
-                                <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {String(part.metadata?.label ?? part.name)}
-                                </span>
-                                {hasNote && <span className="assembly-note-dot" title="Has hotspot">●</span>}
-                              </button>
-                            );
-                          })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* 5. Storage, Import/Export & Integration matching user screenshot */}
+                {/* 2. Storage, Import/Export & Integration matching user screenshot */}
                 <div className="inspector-storage-section">
                   <div className="inspector-storage-status">
                     <span className="status-dot green" />

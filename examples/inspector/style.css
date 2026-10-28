@@ -4198,9 +4198,19 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   display: flex;
   flex-direction: column;
   gap: 5px;
-  max-height: 125px;
+  max-height: 140px;
   overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 2px;
+  width: 100%;
+  scrollbar-width: thin;
+}
+.inspector-notes-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.inspector-notes-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 2px;
 }
 .assembly-search-input-wrap {
   position: relative;
@@ -4235,6 +4245,86 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   font-size: 8px;
   color: #38bdf8;
   margin-left: auto;
+}
+
+/* ─── Inspector Sidecard 1: Hotspots, Tour & Assembly (Upper Div on Right) ─── */
+.inspector-tour-panel {
+  position: absolute;
+  top: 74px;
+  right: 28px;
+  width: 350px;
+  max-width: calc(100% - 36px);
+  max-height: calc(100vh - 380px);
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(45, 212, 191, 0.4);
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75), 0 0 20px rgba(45, 212, 191, 0.15);
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+  gap: 10px;
+  z-index: 54;
+  pointer-events: auto;
+  animation: console-slide-up 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+  transition: max-height 0.24s cubic-bezier(0.16, 1, 0.3, 1), padding 0.2s ease;
+}
+.inspector-tour-panel.minimized {
+  max-height: 48px;
+  padding: 10px 14px;
+  cursor: pointer;
+  background: rgba(15, 23, 42, 0.98);
+}
+.inspector-tour-panel.minimized .tour-panel-body {
+  display: none !important;
+}
+.tour-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+  width: 100%;
+}
+.tour-panel-body::-webkit-scrollbar {
+  width: 4px;
+}
+.tour-panel-body::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 2px;
+}
+.inspector-reopen-panel-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(45, 212, 191, 0.15);
+  border: 1px solid rgba(45, 212, 191, 0.4);
+  color: #5eead4;
+  font: 700 11px 'Manrope', sans-serif;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.inspector-reopen-panel-btn:hover {
+  background: rgba(45, 212, 191, 0.28);
+  border-color: #5eead4;
+  transform: translateY(-1px);
+}
+
+@media (max-width: 768px) {
+  .inspector-tour-panel {
+    top: 58px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+    max-height: 38vh;
+    z-index: 60;
+  }
 }
 
 
