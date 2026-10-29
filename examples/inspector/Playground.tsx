@@ -1682,6 +1682,46 @@ export function Playground({
                   </div>
                 )}
 
+                {/* Background Color Switcher */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: '100%', paddingTop: 6, borderTop: '1px solid rgba(148, 163, 184, 0.15)' }}>
+                  <span style={{ font: '700 9px "JetBrains Mono", monospace', color: '#64748b', letterSpacing: '0.6px' }}>
+                    BACKGROUND COLOR
+                  </span>
+                  <div
+                    className="gimbal-color-line"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      width: '100%',
+                      padding: '2px 0',
+                    }}
+                  >
+                    {FIXED_GIMBAL_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        className={`palette-swatch ${canvasBg.toLowerCase() === c.toLowerCase() ? 'active' : ''}`}
+                        style={{
+                          backgroundColor: c,
+                          width: 18,
+                          height: 18,
+                          minWidth: 18,
+                          minHeight: 18,
+                          padding: 0,
+                          flexShrink: 0,
+                        }}
+                        onClick={() => {
+                          setCustomStudioBg(c);
+                          setHexInputText(c.replace('#', ''));
+                        }}
+                        aria-label={`Set inspector background ${c}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+
                 {/* 2. Storage, Import/Export & Integration matching user screenshot */}
                 <div className="inspector-storage-section">
                   <div className="inspector-storage-status">
