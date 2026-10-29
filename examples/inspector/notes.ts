@@ -1,6 +1,23 @@
 export interface Note { id: string; target: string; label: string; point?: [number, number, number] }
 export const STORAGE_KEY = 'spatialkit.inspector.notes.v1';
-export const INITIAL_NOTES: Note[] = [{ id: 'starter-note', target: 'pump/pressure-valve', label: 'Seal' }];
+export const INITIAL_NOTES: Note[] = [];
+
+export function loadNotesFromStorage(modelId = 'pump'): Note[] {
+  const key = notesKey(modelId);
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw !== null) {
+      const parsed = parseNotes(raw, modelId);
+      // Clean and remove any stale "Inspect this seal" or starter note from browser storage
+      const cleaned = parsed.filter((n) => n.id !== 'starter-note' && !/inspect.*seal/i.test(n.label));
+      if (cleaned.length !== parsed.length) {
+        try { localStorage.setItem(key, JSON.stringify(cleaned)); } catch {}
+      }
+      return cleaned;
+    }
+  } catch {}
+  return [];
+}
 
 export function parseNotes(raw: string, modelId = 'pump'): Note[] {
   const value: unknown = JSON.parse(raw);

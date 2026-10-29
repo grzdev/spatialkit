@@ -26,7 +26,7 @@ import {
   type SpatialPart,
   type SurfaceHit,
 } from 'spatialkit/react';
-import { INITIAL_NOTES, parseNotes, notesKey, annotationOffset, type Note } from './notes';
+import { INITIAL_NOTES, parseNotes, notesKey, annotationOffset, loadNotesFromStorage, type Note } from './notes';
 import { DEMO_MODEL, MODEL_FIT, prepareModel, prepareModelFromUrl, type ModelAsset } from './model-files';
 import { generateComponent, publicFilename, INSTALL_COMMAND } from './integration';
 import {
@@ -497,7 +497,7 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
   const [codeOpen, setCodeOpen]       = useState(false);
   const [copied, setCopied]           = useState(false);
   const [storageState, setStorageState] = useState('Notes saved on this device');
-  const [notes, setNotes]             = useState<Note[]>(model.id === 'pump' ? INITIAL_NOTES : []);
+  const [notes, setNotes]             = useState<Note[]>(() => loadNotesFromStorage(model.id));
   const [storageReady, setStorageReady] = useState(false);
   const [theme, setTheme]             = useState<'light' | 'dark'>(getInitialTheme);
   type ActiveView = 'inspector' | 'playground' | 'controls';
@@ -634,14 +634,14 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
   // Restore notes from localStorage
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw !== null) setNotes(parseNotes(raw, model.id));
+      const loaded = loadNotesFromStorage(model.id);
+      setNotes(loaded);
     } catch {
       setStorageState('Saved notes could not be read. Export notes to keep a copy.');
       return;
     }
     setStorageReady(true);
-  }, []);
+  }, [model.id]);
 
   // Persist notes
   useEffect(() => {

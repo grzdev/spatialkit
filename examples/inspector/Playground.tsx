@@ -28,7 +28,7 @@ import {
 } from './main';
 import { MODEL_FIT, type ModelAsset } from './model-files';
 import { generateComponent, publicFilename } from './integration';
-import { INITIAL_NOTES, parseNotes, notesKey, annotationOffset, type Note } from './notes';
+import { INITIAL_NOTES, parseNotes, notesKey, annotationOffset, loadNotesFromStorage, type Note } from './notes';
 import {
   HorizontalMechanicalLever,
   PullLever,
@@ -514,15 +514,14 @@ export function Playground({
   // ─── 3D Inspector, Hotspot & Guided Tour State ──────────────────────────────
   const storageKey = notesKey(model.id);
   const [internalNotes, setInternalNotes] = useState<Note[]>(() => {
-    if (propNotes && propNotes.length > 0) return propNotes;
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw !== null) return parseNotes(raw, model.id);
-    } catch {}
-    return model.id === 'pump' ? INITIAL_NOTES : [];
+    if (propNotes !== undefined) {
+      return propNotes.filter((n) => n.id !== 'starter-note' && !/inspect.*seal/i.test(n.label));
+    }
+    return loadNotesFromStorage(model.id);
   });
 
-  const notes = propNotes ?? internalNotes;
+  const rawNotes = propNotes ?? internalNotes;
+  const notes = rawNotes.filter((n) => n.id !== 'starter-note' && !/inspect.*seal/i.test(n.label));
   const setNotes = (updater: Note[] | ((prev: Note[]) => Note[])) => {
     setInternalNotes((prev) => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
