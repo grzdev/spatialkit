@@ -498,6 +498,7 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
   const [copied, setCopied]           = useState(false);
   const [storageState, setStorageState] = useState('Notes saved on this device');
   const [notes, setNotes]             = useState<Note[]>(() => loadNotesFromStorage(model.id));
+  const [notesModelId, setNotesModelId] = useState(model.id);
   const [storageReady, setStorageReady] = useState(false);
   const [theme, setTheme]             = useState<'light' | 'dark'>(getInitialTheme);
   type ActiveView = 'inspector' | 'playground' | 'controls';
@@ -631,24 +632,37 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
   // Apply theme on mount + change
   useEffect(() => { applyTheme(theme); }, [theme]);
 
-  // Restore notes from localStorage
+  // Restore notes from localStorage and reset model-specific selection when model changes
   useEffect(() => {
+    setSelected(null);
+    setParts([]);
+    setDraft('');
+    setEditingNote(null);
+    setPlacingHotspot(false);
+    setPendingHotspot(null);
+    setMeasuring(false);
+    setCaliperPointA(null);
+    setMeasurements([]);
+    setTourActive(false);
+    setFocusRequest(null);
     try {
       const loaded = loadNotesFromStorage(model.id);
       setNotes(loaded);
     } catch {
       setStorageState('Saved notes could not be read. Export notes to keep a copy.');
+      setNotesModelId(model.id);
       return;
     }
+    setNotesModelId(model.id);
     setStorageReady(true);
   }, [model.id]);
 
   // Persist notes
   useEffect(() => {
-    if (!storageReady) return;
+    if (!storageReady || notesModelId !== model.id) return;
     try { localStorage.setItem(storageKey, JSON.stringify(notes)); }
     catch { setStorageState('Storage unavailable. Export notes to keep a copy.'); }
-  }, [notes, storageReady, storageKey]);
+  }, [notes, storageReady, storageKey, notesModelId, model.id]);
 
   // Reset draft on selection change
   useEffect(() => { setDraft(''); setEditingNote(null); }, [selected?.id]);
@@ -877,9 +891,9 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
               type="button"
               className="topbar-demo-btn"
               onClick={onDemo}
-              title="Return to default demo model"
+              title="Return to default model"
             >
-              ↶ Demo
+              ↶ Default Model
             </button>
           )}
         </div>
@@ -1233,6 +1247,7 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
                   )}
                 </SpatialProvider>
                 <ContactShadows
+                  key={model.id}
                   position={[0, -0.012, 0]}
                   opacity={env.shadowOpacity}
                   scale={12}
@@ -2203,7 +2218,7 @@ function App() {
   function demo() {
     request.current++; setUploading(false); setUploadError(''); setModel(DEMO_MODEL);
   }
-  return <Workbench key={model.id} model={model} onUpload={upload} onDemo={demo} uploading={uploading} uploadError={uploadError} />;
+  return <Workbench model={model} onUpload={upload} onDemo={demo} uploading={uploading} uploadError={uploadError} />;
 }
 
 createRoot(document.getElementById('root')!).render(

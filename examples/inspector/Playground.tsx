@@ -553,6 +553,21 @@ export function Playground({
     return () => clearTimeout(timer);
   }, []);
 
+  // Reset model-specific selection & hotspot draft when switching models without changing activeTool
+  useEffect(() => {
+    setSelectedPartId(null);
+    setHighlightedNoteId(null);
+    setPendingPoint(null);
+    setPendingWorldBeacon(null);
+    setPendingTarget(null);
+    setDraftLabel('');
+    setTourActive(false);
+    setFocusRequest(null);
+    if (propNotes === undefined) {
+      setInternalNotes(loadNotesFromStorage(model.id));
+    }
+  }, [model.id]);
+
   // Mobile screen detection for responsive camera framing & model elevating
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
   useEffect(() => {
@@ -937,6 +952,16 @@ export function Playground({
         />
 
         <div className="playground-top-actions">
+          {model.object && (
+            <button
+              type="button"
+              className="playground-top-btn"
+              onClick={onDemo}
+              title="Switch back to default model"
+            >
+              <span>↶ Default Model</span>
+            </button>
+          )}
           <button
             type="button"
             className="playground-top-btn"
@@ -960,7 +985,11 @@ export function Playground({
       {/* ─── Bottom-Left 3D Model Credit Badge (Aligned with bottom dock) ─── */}
       <div className="playground-credit-badge" role="contentinfo" aria-label="3D Model Attribution">
         <span className="credit-icon">©</span>
-        {activeTool === 'gimbal' ? (
+        {model.object ? (
+          <span>
+            Custom Model: <strong>{model.name}</strong>
+          </span>
+        ) : activeTool === 'gimbal' ? (
           <span>
             Model from <a href="https://sketchfab.com/ikagogava" target="_blank" rel="noreferrer">Ika Gogava</a>
           </span>
@@ -1181,23 +1210,25 @@ export function Playground({
                 liftHeight={liftHeight}
                 ballPositionRef={ballPositionRef}
               >
-                {activeTool === 'gimbal' ? (
+                {model.object ? (
+                  <group scale={activeTool === 'gimbal' ? 1.6 / MODEL_FIT : 1}>
+                    <SelectableObject
+                      object={model.object}
+                      animations={model.animations}
+                      animationProgress={model.hasAnimations ? animationProgress : undefined}
+                      explode={proceduralExplode}
+                      clippingPlanes={clippingPlanes}
+                      modelId={model.id}
+                      fit={MODEL_FIT}
+                      onSurfaceClick={handleSurfaceClick}
+                    />
+                  </group>
+                ) : activeTool === 'gimbal' ? (
                   /* Dynamic Target: Basketball flying across 3D space */
                   <SelectableModel
                     src="/models/basketball.glb"
                     modelId="basketball"
                     fit={1.6}
-                    onSurfaceClick={handleSurfaceClick}
-                  />
-                ) : model.object ? (
-                  <SelectableObject
-                    object={model.object}
-                    animations={model.animations}
-                    animationProgress={model.hasAnimations ? animationProgress : undefined}
-                    explode={proceduralExplode}
-                    clippingPlanes={clippingPlanes}
-                    modelId={model.id}
-                    fit={MODEL_FIT}
                     onSurfaceClick={handleSurfaceClick}
                   />
                 ) : (
@@ -1250,6 +1281,7 @@ export function Playground({
           </SpatialProvider>
 
           <ContactShadows
+            key={model.id}
             position={[0, mobileModelYOffset - 0.012, 0]}
             opacity={isSpotlightMode ? 0.2 : env.shadowOpacity}
             scale={14}
@@ -1763,6 +1795,18 @@ export function Playground({
                     <span>Download Model (.glb)</span>
                     <span>⤓</span>
                   </button>
+
+                  {model.object && (
+                    <button
+                      type="button"
+                      className="inspector-download-glb-btn"
+                      onClick={onDemo}
+                      title="Return to default model"
+                    >
+                      <span>Back to Default Model</span>
+                      <span>↶</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -2287,6 +2331,19 @@ export function Playground({
               >
                 <span>↑ Upload GLB</span>
               </button>
+              {model.object && (
+                <button
+                  type="button"
+                  className="playground-top-btn"
+                  style={{ justifyContent: 'center', padding: '8px 10px', gridColumn: '1 / -1' }}
+                  onClick={() => {
+                    onDemo();
+                    setSidebarOpen(false);
+                  }}
+                >
+                  <span>↶ Back to Default Model</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
