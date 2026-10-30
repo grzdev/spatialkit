@@ -724,6 +724,7 @@ export function Playground({
   // Default lightDial to 1.0 (all the way to the right) so light shines straight at front face of the model!
   const [lightDial, setLightDial] = useState(1.0);
   const [lightBrightness, setLightBrightness] = useState(0.55); // Default in the middle!
+  const [lightHeight, setLightHeight] = useState(0.55); // Default spotlight elevation in the middle!
   const [targetAim, setTargetAim] = useState<JoystickValue>({ x: 0, y: 0 });
   const ballPositionRef = useRef(new Vector3(0, 2, 0));
   const [gimbalHUD, setGimbalHUD] = useState({
@@ -1358,6 +1359,7 @@ export function Playground({
                 activeControl={activeModelControl}
                 lightDial={lightDial}
                 lightBrightness={lightBrightness}
+                lightHeight={lightHeight}
                 liftHeight={liftHeight}
                 ballPositionRef={ballPositionRef}
               >
@@ -1730,7 +1732,7 @@ export function Playground({
               </strong>
               <span>
                 {activeTool === 'inspect' && `${notes.length} HOTSPOT${notes.length === 1 ? '' : 'S'} SAVED · EXPORT / ATTACH`}
-                {activeTool === 'light' && `ORBIT: ${Math.round(lightDial * 360)}° · BRIGHTNESS: ${Math.round(lightBrightness * 100)}%`}
+                {activeTool === 'light' && `ORBIT: ${Math.round(lightDial * 360)}° · BRIGHTNESS: ${Math.round(lightBrightness * 100)}% · HEIGHT: ${(0.35 + lightHeight * 3.75).toFixed(1)}m`}
                 {activeTool === 'gimbal' && `AIM: [${(targetAim.x * 100).toFixed(0)}, ${(targetAim.y * 100).toFixed(0)}] · ${isTargetLocked ? 'LOCKED' : 'TRACKING'} · COLOR: ${gimbalBg}`}
                 {activeTool === 'lift' && `HEIGHT: ${(0.08 + liftHeight * 3.4).toFixed(2)}m`}
                 {activeTool === 'scrubber' && `PROGRESS: ${Math.round((model.hasAnimations ? animationProgress : proceduralExplode) * 100)}%`}
@@ -1961,24 +1963,64 @@ export function Playground({
                 </div>
               </div>
             )}
-            {/* Spotlight Rig Widget: Orbit dial + vertical space + Brightness lever (starts at 0.55 in middle) */}
+            {/* Spotlight Rig Widget: Orbit dial + Brightness lever + Spotlight Height lever */}
             {activeTool === 'light' && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '0 4px 4px' }}>
+                  <span style={{ font: '700 9.5px "JetBrains Mono", monospace', color: '#94a3b8', letterSpacing: '0.6px' }}>
+                    SPOTLIGHT ORBIT
+                  </span>
+                  <span style={{ font: '700 9.5px "JetBrains Mono", monospace', color: '#38bdf8' }}>
+                    {Math.round(lightDial * 360)}°
+                  </span>
+                </div>
                 <TactileDial
                   value={lightDial}
                   onChange={setLightDial}
-                  size={isMobile ? 80 : 92}
+                  size={isMobile ? 76 : 88}
                   label="BEAM ORBIT"
                   formatValue={(v) => `${Math.round(v * 360)}°`}
                   showGraduations
                   fullCircle
                 />
-                <div style={{ width: '100%', height: 1, background: 'rgba(255, 255, 255, 0.08)', margin: isMobile ? '8px 0 6px' : '14px 0 10px' }} />
-                <div style={{ width: '100%', padding: '0 4px' }}>
+
+                <div style={{ width: '100%', height: 1, background: 'rgba(255, 255, 255, 0.08)', margin: isMobile ? '8px 0 6px' : '12px 0 8px' }} />
+
+                <div style={{ width: '100%', padding: '0 4px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                    <span style={{ font: '700 9.5px "JetBrains Mono", monospace', color: '#94a3b8', letterSpacing: '0.6px' }}>
+                      BRIGHTNESS (REDUCE / INCREASE)
+                    </span>
+                    <span style={{ font: '700 9.5px "JetBrains Mono", monospace', color: '#38bdf8' }}>
+                      {Math.round(lightBrightness * 100)}%
+                    </span>
+                  </div>
                   <HorizontalMechanicalLever
                     value={lightBrightness}
                     onChange={setLightBrightness}
                     label="BEAM INTENSITY"
+                    handleLabel="BRIGHT"
+                    tickLabels={['REDUCE', '25%', '50%', '75%', 'INCREASE']}
+                  />
+                </div>
+
+                <div style={{ width: '100%', height: 1, background: 'rgba(255, 255, 255, 0.08)', margin: isMobile ? '6px 0' : '10px 0 8px' }} />
+
+                <div style={{ width: '100%', padding: '0 4px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                    <span style={{ font: '700 9.5px "JetBrains Mono", monospace', color: '#94a3b8', letterSpacing: '0.6px' }}>
+                      SPOTLIGHT HEIGHT (DOWN / UP)
+                    </span>
+                    <span style={{ font: '700 9.5px "JetBrains Mono", monospace', color: '#38bdf8' }}>
+                      {(0.35 + lightHeight * 3.75).toFixed(1)}m
+                    </span>
+                  </div>
+                  <HorizontalMechanicalLever
+                    value={lightHeight}
+                    onChange={setLightHeight}
+                    label="SPOTLIGHT HEIGHT"
+                    handleLabel="HEIGHT"
+                    tickLabels={['DOWN', '25%', 'MID', '75%', 'UP']}
                   />
                 </div>
               </div>

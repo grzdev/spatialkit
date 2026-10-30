@@ -80,6 +80,8 @@ export function HorizontalMechanicalLever({
   max = 1,
   step = 0.005,
   label = 'Timeline scrubber lever',
+  handleLabel = 'SCRUB',
+  tickLabels = ['0%', '25%', '50%', '75%', '100%'],
 }: {
   value: number;
   onChange: (value: number) => void;
@@ -87,6 +89,8 @@ export function HorizontalMechanicalLever({
   max?: number;
   step?: number;
   label?: string;
+  handleLabel?: string;
+  tickLabels?: [string, string, string, string, string];
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const pointerIdRef = useRef<number | null>(null);
@@ -157,11 +161,11 @@ export function HorizontalMechanicalLever({
       }}
     >
       <div className="horiz-lever-ticks" aria-hidden="true">
-        <span>0%</span>
-        <span>25%</span>
-        <span>50%</span>
-        <span>75%</span>
-        <span>100%</span>
+        <span>{tickLabels[0]}</span>
+        <span>{tickLabels[1]}</span>
+        <span>{tickLabels[2]}</span>
+        <span>{tickLabels[3]}</span>
+        <span>{tickLabels[4]}</span>
       </div>
       <div className="horiz-lever-slot">
         <div className="horiz-lever-fill" style={{ width: `${progress * 100}%` }} />
@@ -173,7 +177,7 @@ export function HorizontalMechanicalLever({
       >
         <div className="horiz-lever-handle">
           <i /><i /><i />
-          <span>SCRUB</span>
+          <span>{handleLabel}</span>
         </div>
       </div>
     </div>

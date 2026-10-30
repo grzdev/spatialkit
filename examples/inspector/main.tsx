@@ -12,7 +12,7 @@ import {
 import { createRoot } from 'react-dom/client';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { ContactShadows, Html } from '@react-three/drei';
-import { Box3, Group, Mesh, Plane, Vector3 } from 'three';
+import { Box3, Group, Mesh, Plane, SpotLight, Vector3 } from 'three';
 import {
   Annotation,
   BlenderControls,
@@ -341,6 +341,7 @@ export function InteractiveModelRig({
   activeControl,
   lightDial,
   lightBrightness = 0.55,
+  lightHeight = 0.55,
   liftHeight,
   ballPositionRef,
   children,
@@ -348,12 +349,14 @@ export function InteractiveModelRig({
   activeControl: ActiveModelControl;
   lightDial: number;
   lightBrightness?: number;
+  lightHeight?: number;
   liftHeight: number;
   ballPositionRef?: React.MutableRefObject<Vector3>;
   children: ReactNode;
 }) {
   const levitationRef = useRef<Group>(null);
   const pistonRef = useRef<Mesh>(null);
+  const spotLightRef = useRef<SpotLight>(null);
 
   useFrame(({ clock }) => {
     if (!levitationRef.current) return;
@@ -391,11 +394,20 @@ export function InteractiveModelRig({
   // When lightDial is 1.0 (all the way to the right), light shines directly at the front face of the model!
   const lightAngle = (lightDial - 0.875) * Math.PI * 2;
   const lightRadius = 3.2;
+  const lightY = 0.35 + lightHeight * 3.75;
+  const lightTargetY = 0.25 + lightHeight * 1.35;
   const lightPos: [number, number, number] = [
     Math.sin(lightAngle) * lightRadius,
-    2.6,
+    lightY,
     Math.cos(lightAngle) * lightRadius,
   ];
+
+  useEffect(() => {
+    if (spotLightRef.current) {
+      spotLightRef.current.target.position.set(0, lightTargetY, 0);
+      spotLightRef.current.target.updateMatrixWorld();
+    }
+  }, [lightTargetY, lightDial, activeControl]);
 
   return (
     <>
@@ -403,8 +415,9 @@ export function InteractiveModelRig({
         <group>
           {/* Focused high-intensity inspection spotlight */}
           <spotLight
+            ref={spotLightRef}
             position={lightPos}
-            target-position={[0, 0.8, 0]}
+            target-position={[0, lightTargetY, 0]}
             intensity={Math.pow(lightBrightness, 1.5) * 160 + 20}
             angle={0.72}
             penumbra={0.32}
