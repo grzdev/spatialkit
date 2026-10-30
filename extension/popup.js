@@ -1,9 +1,10 @@
 // SpatialKit 3D Web Companion - Popup Script
-const SPATIALKIT_APP_URL = 'http://localhost:5173';
+const SPATIALKIT_APP_URL = 'https://spatialkit.netlify.app';
 
 document.addEventListener('DOMContentLoaded', () => {
   const container = document.getElementById('models-container');
   const countEl = document.getElementById('detected-count');
+  const btnPickOnPage = document.getElementById('btn-pick-on-page');
   const customUrlInput = document.getElementById('custom-url-input');
   const btnInspectCustom = document.getElementById('btn-inspect-custom');
   const btnOpenInspector = document.getElementById('btn-open-inspector');
@@ -18,13 +19,20 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    // Color-picker style 3D model picker on page
+    btnPickOnPage.addEventListener('click', () => {
+      chrome.tabs.sendMessage(activeTab.id, { action: 'SPATIALKIT_START_PICKER' }, () => {
+        window.close();
+      });
+    });
+
     chrome.tabs.sendMessage(activeTab.id, { action: 'GET_DETECTED_MODELS' }, (response) => {
       if (chrome.runtime.lastError || !response || !response.models || !response.models.length) {
         countEl.textContent = '0 found';
         container.innerHTML = `
           <div class="sk-empty-hint">
-            No 3D models detected on this page.<br>
-            <small style="color:#64748b">Supports .glb, .gltf, and &lt;model-viewer&gt; tags</small>
+            No 3D models detected yet.<br>
+            <small style="color:#64748b">Click <strong>Pick 3D Model from Page</strong> above or paste a .glb / .gltf URL below.</small>
           </div>
         `;
         return;
@@ -37,24 +45,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return `
           <div class="sk-model-card">
             <div class="sk-model-title" title="${url}">${name}</div>
-            <div class="sk-model-btns">
-              <button type="button" class="btn-primary btn-drawer" data-url="${url}">In-Page Drawer</button>
-              <button type="button" class="btn-secondary btn-tab" data-url="${url}">Full Tab ↗</button>
-            </div>
+            <button type="button" class="btn-primary btn-tab" data-url="${url}">Open in SpatialKit ↗</button>
           </div>
         `;
       }).join('');
-
-      container.querySelectorAll('.btn-drawer').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-          const url = e.currentTarget.getAttribute('data-url');
-          chrome.tabs.sendMessage(activeTab.id, {
-            action: 'SPATIALKIT_INJECT_DRAWER',
-            modelUrl: url,
-          });
-          window.close();
-        });
-      });
 
       container.querySelectorAll('.btn-tab').forEach((btn) => {
         btn.addEventListener('click', (e) => {
@@ -65,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Custom URL Inspector
+  // Custom URL Inspector -> opens in new SpatialKit tab
   btnInspectCustom.addEventListener('click', () => {
     const raw = customUrlInput.value.trim();
     if (!raw) return;

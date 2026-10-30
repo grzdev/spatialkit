@@ -1,48 +1,26 @@
-# SpatialKit 3D Inspector Extension 🌐✨
+# SpatialKit 3D Picker — Chrome Extension 🎯✨
 
-A lightweight, powerful browser extension that sniffs 3D models (`.glb`, `.gltf`, `<model-viewer>`) across any webpage you browse, letting you inspect, play animations, and control them using SpatialKit's high-fidelity spatial controls.
-
----
-
-## 🚀 Key Features
-
-1. **Automatic 3D Model Sniffer**:
-   - Detects `<model-viewer>`, `<three-d-model>`, and standard HTML elements embedding 3D models.
-   - Scans DOM links pointing to `.glb` and `.gltf` assets.
-   - Surfaces a non-intrusive floating glass badge at the bottom-right of the page indicating how many 3D models were found.
-
-2. **In-Page Glass Drawer**:
-   - Click the detected model or floating badge to slide open an in-page SpatialKit drawer without navigating away from the page.
-
-3. **Open in Dedicated Tab**:
-   - One-click button to open any detected 3D model in your full SpatialKit studio workspace with all spatial controls, lighting presets, timeline scrubbers, and exploded views.
-
-4. **Right-Click Context Menu**:
-   - Right-click any link or 3D element and choose **"Inspect 3D Model in SpatialKit"**.
-
-5. **Popup Dashboard**:
-   - Click the extension icon in the browser toolbar to see all 3D models detected on the current tab, paste any custom GLB/GLTF URL, or quickly launch the local SpatialKit Inspector / Controls Lab.
+A color-picker-style browser extension that lets you pick any 3D model (`.glb`, `.gltf`, Three.js `<canvas>`, or `<model-viewer>`) on any webpage and immediately open it in a dedicated **[SpatialKit](https://spatialkit.netlify.app)** tab with all interactive rigs, hotspots, lighting presets, and cross-section slicers.
 
 ---
 
-## 🛠️ How to Install (Chrome, Edge, Brave, Arc, Opera)
+## 🚀 How It Works
 
-1. Open your Chromium-based browser and navigate to:
-   - Chrome: `chrome://extensions`
-   - Edge: `edge://extensions`
-   - Brave: `brave://extensions`
-2. Enable **Developer mode** (toggle switch in the top right or bottom left).
-3. Click the **"Load unpacked"** button.
-4. Select this directory:
-   ```
-   spatialkit/extension
-   ```
-5. You're all set! Pin the **SpatialKit 3D** icon to your toolbar.
+1. **🎯 Pick 3D Model from Page (Color-Picker Style)**:
+   - Click the **SpatialKit** extension icon and hit **🎯 Pick 3D Model from Page** (or right-click anywhere on a webpage and choose **Pick 3D Model on Page with SpatialKit 🎯**).
+   - Hover over any 3D model, `<canvas>`, or `<model-viewer>` on the site — it highlights with a glowing teal frame.
+   - Click it, and it opens a brand-new tab at `https://spatialkit.netlify.app/?modelUrl=...` with that exact 3D model loaded and ready to inspect!
+
+2. **Automatic 3D Asset Sniffer**:
+   - Automatically detects `<model-viewer>` tags, `.glb` / `.gltf` links, and `.glb` / `.gltf` network assets loaded by Three.js / React Three Fiber `<canvas>` scenes.
+   - Click **Open in SpatialKit ↗** from the popup list or floating badge to launch the model in a full SpatialKit tab.
 
 ---
 
-## 🧪 Testing on Webpages
+## 🛠️ How to Install Locally in Chrome / Edge / Brave / Arc
 
-- **E-Commerce & Showcases**: Browse sites with 3D product previews (e.g. Shopify 3D stores, Apple AR previews, Sketchfab, Khronos glTF sample galleries).
-- **Direct GLB Links**: Click on or right-click any direct link to a `.glb` or `.gltf` asset.
-- **Local Dev Server**: Make sure your SpatialKit inspector is running (`npm run dev:example`) so that local preview tabs open seamlessly at `http://localhost:5173`.
+1. Open your browser and go to **`chrome://extensions`** (or `edge://extensions` / `brave://extensions`).
+2. Turn on **Developer mode** (top-right toggle).
+3. Click **Load unpacked**.
+4. Select the [`extension`](.) folder inside this repository (`spatialkit/extension`).
+5. Pin the **SpatialKit 3D** icon to your toolbar and try it on any site with 3D models!

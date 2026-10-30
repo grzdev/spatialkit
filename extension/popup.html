@@ -26,11 +26,11 @@
       justify-content: center;
       width: 26px;
       height: 26px;
-      background: #2563eb;
+      background: #58ddba;
       border-radius: 6px;
       font-size: 15px;
       font-weight: 800;
-      color: #ffffff;
+      color: #071018;
       position: relative;
     }
     .sk-logo span {
@@ -38,7 +38,7 @@
       position: absolute;
       right: -3px;
       top: -5px;
-      color: #60a5fa;
+      color: #38bdf8;
     }
     .sk-pop-title h1 {
       font-size: 13.5px;
@@ -47,6 +47,27 @@
     .sk-pop-title p {
       font-size: 10px;
       color: #94a3b8;
+    }
+    .sk-picker-cta {
+      width: 100%;
+      padding: 10px 14px;
+      margin-bottom: 14px;
+      background: linear-gradient(135deg, #58ddba, #38bdf8);
+      color: #071018;
+      font-size: 12px;
+      font-weight: 800;
+      border: none;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: transform 0.15s ease, filter 0.15s ease;
+    }
+    .sk-picker-cta:hover {
+      filter: brightness(1.06);
+      transform: translateY(-1px);
     }
     .sk-pop-section {
       margin-bottom: 14px;
@@ -67,6 +88,10 @@
       border-radius: 8px;
       padding: 10px;
       margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
     }
     .sk-model-title {
       font-size: 11px;
@@ -76,40 +101,25 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      margin-bottom: 8px;
-    }
-    .sk-model-btns {
-      display: flex;
-      gap: 6px;
+      flex: 1;
     }
     button {
       cursor: pointer;
       font-family: inherit;
       border-radius: 6px;
       font-size: 10.5px;
-      font-weight: 600;
+      font-weight: 700;
       transition: all 0.15s ease;
       border: 1px solid transparent;
     }
     .btn-primary {
-      background: #2563eb;
-      color: #ffffff;
+      background: #58ddba;
+      color: #071018;
       padding: 6px 10px;
-      flex: 1;
+      flex-shrink: 0;
     }
     .btn-primary:hover {
-      background: #1d4ed8;
-    }
-    .btn-secondary {
-      background: #0f172a;
-      color: #cbd5e1;
-      border-color: #334155;
-      padding: 6px 10px;
-      flex: 1;
-    }
-    .btn-secondary:hover {
-      background: #334155;
-      color: #ffffff;
+      background: #2dd4bf;
     }
     .sk-empty-hint {
       background: #1e293b;
@@ -136,7 +146,7 @@
       outline: none;
     }
     .sk-url-input:focus {
-      border-color: #2563eb;
+      border-color: #58ddba;
     }
     .sk-quick-links {
       display: flex;
@@ -154,7 +164,7 @@
     }
     .sk-quick-links button:hover {
       color: #f8fafc;
-      border-color: #60a5fa;
+      border-color: #58ddba;
       background: #1e293b;
     }
   </style>
@@ -163,18 +173,23 @@
   <div class="sk-pop-header">
     <span class="sk-logo">S<span>↗</span></span>
     <div class="sk-pop-title">
-      <h1>SpatialKit 3D Companion</h1>
-      <p>Inspect & interact with web 3D models</p>
+      <h1>SpatialKit 3D Picker</h1>
+      <p>Pick any 3D model on a site → Open in SpatialKit</p>
     </div>
   </div>
 
+  <button type="button" id="btn-pick-on-page" class="sk-picker-cta">
+    <span>🎯</span>
+    <span>Pick 3D Model from Page</span>
+  </button>
+
   <div class="sk-pop-section">
     <div class="sk-section-label">
-      <span>MODELS ON ACTIVE TAB</span>
+      <span>DETECTED MODELS ON ACTIVE TAB</span>
       <span id="detected-count">Scanning...</span>
     </div>
     <div id="models-container">
-      <div class="sk-empty-hint">Scanning active page for 3D models (.glb, .gltf, &lt;model-viewer&gt;)...</div>
+      <div class="sk-empty-hint">Scanning active page for 3D models (.glb, .gltf, Three.js, &lt;model-viewer&gt;)...</div>
     </div>
   </div>
 
@@ -184,12 +199,12 @@
     </div>
     <div class="sk-url-box">
       <input type="url" id="custom-url-input" class="sk-url-input" placeholder="https://example.com/asset.glb">
-      <button type="button" id="btn-inspect-custom" class="btn-primary">Inspect</button>
+      <button type="button" id="btn-inspect-custom" class="btn-primary">Open Tab ↗</button>
     </div>
   </div>
 
   <div class="sk-quick-links">
-    <button type="button" id="btn-open-inspector">Open Inspector ↗</button>
+    <button type="button" id="btn-open-inspector">Open SpatialKit ↗</button>
     <button type="button" id="btn-open-lab">Controls Lab ↗</button>
   </div>
 

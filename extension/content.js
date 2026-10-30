@@ -1,9 +1,11 @@
-// SpatialKit 3D Web Companion - Content Script
+// SpatialKit 3D Web Companion - Content Script (Color-Picker-Style 3D Model Picker -> Opens in New SpatialKit Tab)
 (function () {
-  const SPATIALKIT_APP_URL = 'http://localhost:5173';
+  const SPATIALKIT_APP_URL = 'https://spatialkit.netlify.app';
   let detectedModels = [];
   let launcherElement = null;
-  let drawerElement = null;
+  let pickerActive = false;
+  let pickerBanner = null;
+  let hoveredTarget = null;
 
   function find3DModels() {
     const found = new Set();
@@ -38,9 +40,151 @@
       }
     });
 
+    // 4. Check network resources loaded by Three.js / React Three Fiber / Babylon.js (<canvas> scenes)
+    try {
+      const resources = performance.getEntriesByType('resource');
+      for (const entry of resources) {
+        if (entry.name && /\.(glb|gltf)($|\?|#)/i.test(entry.name)) {
+          found.add(entry.name);
+        }
+      }
+    } catch {}
+
     return Array.from(found);
   }
 
+  function openInSpatialKitTab(modelUrl) {
+    if (!modelUrl) return;
+    const targetUrl = `${SPATIALKIT_APP_URL}/?modelUrl=${encodeURIComponent(modelUrl)}`;
+    try {
+      chrome.runtime.sendMessage({ action: 'OPEN_SPATIALKIT_TAB', modelUrl });
+    } catch {
+      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    }
+  }
+
+  function resolveModelUrlFromElement(el) {
+    if (!el) return detectedModels[0] || null;
+
+    // Direct <model-viewer>
+    const mv = el.closest?.('model-viewer') || el.querySelector?.('model-viewer');
+    if (mv) {
+      const src = mv.getAttribute('src') || mv.src;
+      if (src) {
+        try { return new URL(src, window.location.href).href; } catch {}
+      }
+    }
+
+    // Direct <a> link to .glb / .gltf
+    const link = el.closest?.('a[href]');
+    if (link) {
+      const href = link.getAttribute('href');
+      if (href && /\.(glb|gltf)($|\?|#)/i.test(href)) {
+        try { return new URL(href, window.location.href).href; } catch {}
+      }
+    }
+
+    // Data attribute element
+    const dataEl = el.closest?.('[data-model-url], [data-3d-url], [data-model], [data-src*=".glb"]');
+    if (dataEl) {
+      const raw = dataEl.getAttribute('data-model-url') || dataEl.getAttribute('data-3d-url') || dataEl.getAttribute('data-model') || dataEl.getAttribute('data-src');
+      if (raw) {
+        try { return new URL(raw, window.location.href).href; } catch {}
+      }
+    }
+
+    // <canvas> (Three.js / R3F viewport) -> return detected GLB/GLTF resource on page
+    const canvas = el.closest?.('canvas') || el.querySelector?.('canvas');
+    if (canvas) {
+      const fresh = find3DModels();
+      if (fresh.length > 0) return fresh[fresh.length - 1];
+    }
+
+    const fresh = find3DModels();
+    return fresh[0] || null;
+  }
+
+  // ─── Color-Picker-Style Interactive 3D Element Picker ─────────────────────────
+  function startModelPicker() {
+    if (pickerActive) return;
+    pickerActive = true;
+    detectedModels = find3DModels();
+
+    pickerBanner = document.createElement('div');
+    pickerBanner.id = 'spatialkit-picker-banner';
+    pickerBanner.innerHTML = `
+      <span class="sk-picker-dot"></span>
+      <span><strong>SpatialKit 3D Picker:</strong> Click any 3D viewport or model on this page to open it in a new SpatialKit tab</span>
+      <kbd class="sk-picker-esc">Esc to cancel</kbd>
+    `;
+    document.body.appendChild(pickerBanner);
+
+    document.addEventListener('mousemove', onPickerMove, true);
+    document.addEventListener('click', onPickerClick, true);
+    document.addEventListener('keydown', onPickerKeyDown, true);
+  }
+
+  function stopModelPicker() {
+    pickerActive = false;
+    if (hoveredTarget) {
+      hoveredTarget.classList.remove('sk-picker-highlight');
+      hoveredTarget = null;
+    }
+    if (pickerBanner) {
+      pickerBanner.remove();
+      pickerBanner = null;
+    }
+    document.removeEventListener('mousemove', onPickerMove, true);
+    document.removeEventListener('click', onPickerClick, true);
+    document.removeEventListener('keydown', onPickerKeyDown, true);
+  }
+
+  function onPickerMove(e) {
+    if (!pickerActive) return;
+    const target = e.target;
+    if (!target || target.closest?.('#spatialkit-picker-banner') || target.closest?.('#spatialkit-companion-launcher')) {
+      return;
+    }
+    const candidate =
+      target.closest?.('model-viewer') ||
+      target.closest?.('canvas') ||
+      target.closest?.('a[href*=".glb"], a[href*=".gltf"]') ||
+      target.closest?.('[data-model-url], [data-3d-url], [data-model]') ||
+      target;
+
+    if (hoveredTarget && hoveredTarget !== candidate) {
+      hoveredTarget.classList.remove('sk-picker-highlight');
+    }
+    hoveredTarget = candidate;
+    hoveredTarget.classList.add('sk-picker-highlight');
+  }
+
+  function onPickerClick(e) {
+    if (!pickerActive) return;
+    if (e.target.closest?.('#spatialkit-picker-banner')) {
+      stopModelPicker();
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+
+    const modelUrl = resolveModelUrlFromElement(e.target);
+    stopModelPicker();
+
+    if (modelUrl) {
+      openInSpatialKitTab(modelUrl);
+    } else {
+      window.open(SPATIALKIT_APP_URL, '_blank', 'noopener,noreferrer');
+    }
+  }
+
+  function onPickerKeyDown(e) {
+    if (e.key === 'Escape') {
+      stopModelPicker();
+    }
+  }
+
+  // ─── Floating Badge for Detected Models (Opens directly in New Tab) ───────────
   function renderFloatingBadge(models) {
     if (!models.length) return;
     if (launcherElement) launcherElement.remove();
@@ -57,7 +201,7 @@
       </div>
       <div class="sk-menu-card">
         <div class="sk-menu-header">
-          <span>DETECTED 3D ASSETS</span>
+          <span>OPEN IN SPATIALKIT TAB</span>
           <button type="button" class="sk-close-menu">×</button>
         </div>
         <div class="sk-model-list">
@@ -67,8 +211,7 @@
               <div class="sk-model-item">
                 <span class="sk-model-name" title="${url}">${name}</span>
                 <div class="sk-item-actions">
-                  <button type="button" class="sk-btn-drawer" data-url="${url}" title="Inspect right here on this page">In-Page Drawer</button>
-                  <button type="button" class="sk-btn-tab" data-url="${url}" title="Open full SpatialKit inspector in new tab">Open Tab ↗</button>
+                  <button type="button" class="sk-btn-tab" data-url="${url}" title="Open this 3D model in a new SpatialKit tab">Open in SpatialKit ↗</button>
                 </div>
               </div>
             `;
@@ -79,7 +222,6 @@
 
     document.body.appendChild(launcherElement);
 
-    // Event listeners
     const pill = launcherElement.querySelector('.sk-launcher-pill');
     const menu = launcherElement.querySelector('.sk-menu-card');
     const closeBtn = launcherElement.querySelector('.sk-close-menu');
@@ -93,60 +235,15 @@
       menu.classList.remove('sk-open');
     });
 
-    launcherElement.querySelectorAll('.sk-btn-drawer').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        const url = e.currentTarget.getAttribute('data-url');
-        openInPageDrawer(url);
-        menu.classList.remove('sk-open');
-      });
-    });
-
     launcherElement.querySelectorAll('.sk-btn-tab').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         const url = e.currentTarget.getAttribute('data-url');
-        window.open(`${SPATIALKIT_APP_URL}/?modelUrl=${encodeURIComponent(url)}`, '_blank');
+        openInSpatialKitTab(url);
         menu.classList.remove('sk-open');
       });
     });
   }
 
-  function openInPageDrawer(modelUrl) {
-    if (drawerElement) drawerElement.remove();
-
-    drawerElement = document.createElement('div');
-    drawerElement.id = 'spatialkit-companion-drawer';
-    drawerElement.innerHTML = `
-      <div class="sk-drawer-header">
-        <div class="sk-drawer-title">
-          <span class="sk-logo">S<span>↗</span></span>
-          <strong>SpatialKit 3D Inspector</strong>
-          <span class="sk-drawer-filename">${modelUrl.split('/').pop()?.split('?')[0] || 'Model'}</span>
-        </div>
-        <div class="sk-drawer-actions">
-          <button type="button" class="sk-btn-expand" title="Open full page in new tab">↗ Full Tab</button>
-          <button type="button" class="sk-btn-close" title="Close drawer">×</button>
-        </div>
-      </div>
-      <iframe
-        class="sk-drawer-iframe"
-        src="${SPATIALKIT_APP_URL}/?modelUrl=${encodeURIComponent(modelUrl)}"
-        allow="accelerometer; camera; gyroscope; webgl"
-      ></iframe>
-    `;
-
-    document.body.appendChild(drawerElement);
-
-    drawerElement.querySelector('.sk-btn-close').addEventListener('click', () => {
-      drawerElement.remove();
-      drawerElement = null;
-    });
-
-    drawerElement.querySelector('.sk-btn-expand').addEventListener('click', () => {
-      window.open(`${SPATIALKIT_APP_URL}/?modelUrl=${encodeURIComponent(modelUrl)}`, '_blank');
-    });
-  }
-
-  // Scan initially when page loads
   function scan() {
     detectedModels = find3DModels();
     if (detectedModels.length > 0) {
@@ -156,7 +253,6 @@
 
   scan();
 
-  // Re-scan dynamically if page lazy-loads 3D elements
   const observer = new MutationObserver(() => {
     const next = find3DModels();
     if (next.length !== detectedModels.length) {
@@ -166,12 +262,12 @@
   });
   observer.observe(document.body, { childList: true, subtree: true });
 
-  // Listen for messages from background script or popup
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'GET_DETECTED_MODELS') {
+      detectedModels = find3DModels();
       sendResponse({ models: detectedModels });
-    } else if (request.action === 'SPATIALKIT_INJECT_DRAWER' && request.modelUrl) {
-      openInPageDrawer(request.modelUrl);
+    } else if (request.action === 'SPATIALKIT_START_PICKER') {
+      startModelPicker();
       sendResponse({ success: true });
     }
   });

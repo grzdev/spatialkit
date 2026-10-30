@@ -1,19 +1,19 @@
 // SpatialKit 3D Web Companion - Background Service Worker
-const SPATIALKIT_APP_URL = 'http://localhost:5173';
+const SPATIALKIT_APP_URL = 'https://spatialkit.netlify.app';
 
 chrome.runtime.onInstalled.addListener(() => {
   // Right-click context menu for 3D model links
   chrome.contextMenus.create({
     id: 'spatialkit-inspect-link',
-    title: 'Inspect 3D Model with SpatialKit',
+    title: 'Open 3D Model in SpatialKit Tab ↗',
     contexts: ['link'],
     targetUrlPatterns: ['*://*/*.glb*', '*://*/*.gltf*'],
   });
 
-  // Global context menu for launching SpatialKit
+  // Global context menu for picking a 3D model on the page like a color picker
   chrome.contextMenus.create({
-    id: 'spatialkit-open-workbench',
-    title: 'Open SpatialKit 3D Inspector',
+    id: 'spatialkit-pick-model',
+    title: 'Pick 3D Model on Page with SpatialKit 🎯',
     contexts: ['page'],
   });
 });
@@ -22,22 +22,16 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'spatialkit-inspect-link' && info.linkUrl) {
     const targetUrl = `${SPATIALKIT_APP_URL}/?modelUrl=${encodeURIComponent(info.linkUrl)}`;
     chrome.tabs.create({ url: targetUrl });
-  } else if (info.menuItemId === 'spatialkit-open-workbench') {
-    chrome.tabs.create({ url: SPATIALKIT_APP_URL });
+  } else if (info.menuItemId === 'spatialkit-pick-model' && tab?.id) {
+    chrome.tabs.sendMessage(tab.id, { action: 'SPATIALKIT_START_PICKER' });
   }
 });
 
-// Relay messages between popup and active tab
+// Open a new SpatialKit tab whenever the content script or picker selects a model
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'OPEN_IN_DRAWER' && message.modelUrl) {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]?.id) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: 'SPATIALKIT_INJECT_DRAWER',
-          modelUrl: message.modelUrl,
-        });
-      }
-    });
+  if (message.action === 'OPEN_SPATIALKIT_TAB' && message.modelUrl) {
+    const targetUrl = `${SPATIALKIT_APP_URL}/?modelUrl=${encodeURIComponent(message.modelUrl)}`;
+    chrome.tabs.create({ url: targetUrl });
     sendResponse({ success: true });
   }
 });
