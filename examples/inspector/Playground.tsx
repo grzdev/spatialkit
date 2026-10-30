@@ -26,7 +26,7 @@ import {
   type ActiveModelControl,
   type StudioEnvironmentPreset,
 } from './main';
-import { MODEL_FIT, type ModelAsset } from './model-files';
+import { MAX_MODEL_MB, MODEL_FIT, type ModelAsset, type ModelUploadProgress } from './model-files';
 import { generateComponent, publicFilename } from './integration';
 import { INITIAL_NOTES, parseNotes, notesKey, annotationOffset, loadNotesFromStorage, type Note } from './notes';
 import {
@@ -483,7 +483,9 @@ export function Playground({
   onUpload,
   onDemo,
   uploading,
+  uploadProgress,
   uploadError,
+  onClearUploadError,
   theme,
   notes: propNotes,
   onNotesChange,
@@ -494,7 +496,9 @@ export function Playground({
   onUpload: (file: File) => void;
   onDemo: () => void;
   uploading: boolean;
+  uploadProgress?: ModelUploadProgress | null;
   uploadError: string;
+  onClearUploadError?: () => void;
   theme: 'light' | 'dark';
   notes?: Note[];
   onNotesChange?: (notes: Note[]) => void;
@@ -1003,6 +1007,153 @@ export function Playground({
       {snapshotToast && (
         <div className="snapshot-toast" role="status">
           <span>📷</span> {snapshotToast}
+        </div>
+      )}
+
+      {/* ─── Real-Time 3D Model Upload Spinner & Progress Bar Overlay ─── */}
+      {uploading && (
+        <div
+          className="model-upload-overlay"
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 120,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(5, 9, 18, 0.72)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: 380,
+              background: 'rgba(15, 23, 42, 0.96)',
+              border: '1px solid rgba(88, 221, 186, 0.35)',
+              borderRadius: 14,
+              padding: '22px 24px',
+              boxShadow: '0 24px 60px rgba(0, 0, 0, 0.75), 0 0 28px rgba(88, 221, 186, 0.16)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 14,
+            }}
+          >
+            {/* Spinning Wheel + Progress Ring */}
+            <div style={{ position: 'relative', width: 58, height: 58, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg
+                width="58"
+                height="58"
+                viewBox="0 0 58 58"
+                style={{ animation: 'sk-spin 1.1s linear infinite', position: 'absolute', inset: 0 }}
+              >
+                <style>{`@keyframes sk-spin { to { transform: rotate(360deg); } }`}</style>
+                <circle
+                  cx="29"
+                  cy="29"
+                  r="24"
+                  fill="none"
+                  stroke="rgba(148, 163, 184, 0.18)"
+                  strokeWidth="4"
+                />
+                <circle
+                  cx="29"
+                  cy="29"
+                  r="24"
+                  fill="none"
+                  stroke="#58ddba"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  strokeDasharray="48 110"
+                />
+              </svg>
+              <span style={{ font: '700 12px "JetBrains Mono", monospace', color: '#58ddba' }}>
+                {uploadProgress?.percent ?? 0}%
+              </span>
+            </div>
+
+            <div style={{ textAlign: 'center', width: '100%' }}>
+              <div style={{ font: '700 13px "Manrope", sans-serif', color: '#f8fafc', marginBottom: 4 }}>
+                {uploadProgress?.stage || 'Preparing 3D Model…'}
+              </div>
+              <div style={{ font: '500 10.5px "JetBrains Mono", monospace', color: '#94a3b8' }}>
+                UP TO {MAX_MODEL_MB} MB · 100% LOCAL IN BROWSER
+              </div>
+            </div>
+
+            {/* Accurate Progress Bar Track */}
+            <div
+              style={{
+                width: '100%',
+                height: 8,
+                borderRadius: 999,
+                background: 'rgba(30, 41, 59, 0.9)',
+                border: '1px solid rgba(148, 163, 184, 0.2)',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  width: `${Math.max(3, Math.min(100, uploadProgress?.percent ?? 5))}%`,
+                  height: '100%',
+                  borderRadius: 999,
+                  background: 'linear-gradient(90deg, #58ddba, #38bdf8)',
+                  boxShadow: '0 0 12px rgba(88, 221, 186, 0.5)',
+                  transition: 'width 0.18s ease-out',
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Upload Error Banner (So invalid / oversized models never fail silently) ─── */}
+      {uploadError && !uploading && (
+        <div
+          role="alert"
+          style={{
+            position: 'absolute',
+            top: 66,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 110,
+            maxWidth: 'calc(100% - 32px)',
+            background: 'rgba(127, 29, 29, 0.95)',
+            border: '1px solid rgba(248, 113, 113, 0.55)',
+            borderRadius: 10,
+            padding: '10px 14px',
+            color: '#fecaca',
+            font: '600 12px "Manrope", sans-serif',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            boxShadow: '0 14px 36px rgba(0, 0, 0, 0.55)',
+          }}
+        >
+          <span>⚠️ {uploadError}</span>
+          {onClearUploadError && (
+            <button
+              type="button"
+              onClick={onClearUploadError}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#fecaca',
+                fontSize: 15,
+                cursor: 'pointer',
+                padding: '0 4px',
+                lineHeight: 1,
+              }}
+              aria-label="Dismiss upload error"
+            >
+              ×
+            </button>
+          )}
         </div>
       )}
 

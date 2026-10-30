@@ -27,7 +27,7 @@ import {
   type SurfaceHit,
 } from 'spatialkit/react';
 import { INITIAL_NOTES, parseNotes, notesKey, annotationOffset, loadNotesFromStorage, type Note } from './notes';
-import { DEMO_MODEL, MODEL_FIT, prepareModel, prepareModelFromUrl, type ModelAsset } from './model-files';
+import { DEMO_MODEL, MAX_MODEL_MB, MODEL_FIT, prepareModel, prepareModelFromUrl, type ModelAsset, type ModelUploadProgress } from './model-files';
 import { generateComponent, publicFilename, INSTALL_COMMAND } from './integration';
 import {
   ControlsLab,
@@ -482,12 +482,14 @@ function TreeGroup({
 }
 
 // ─── Main app ───────────────────────────────────────────────────────────────
-function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
+function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadError, onClearUploadError }: {
   model: ModelAsset;
   onUpload: (file: File) => void;
   onDemo: () => void;
   uploading: boolean;
+  uploadProgress: ModelUploadProgress | null;
   uploadError: string;
+  onClearUploadError: () => void;
 }) {
   const [selected, setSelected]       = useState<SpatialPart | null>(null);
   const [parts, setParts]             = useState<SpatialPart[]>([]);
@@ -871,9 +873,9 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
             className="topbar-upload-btn"
             onClick={() => topFileInputRef.current?.click()}
             disabled={uploading}
-            title="Upload a custom 3D model (.glb / .gltf)"
+            title={`Upload a custom 3D model (.glb / .gltf up to ${MAX_MODEL_MB} MB)`}
           >
-            {uploading ? 'Preparing…' : '↑ Upload'}
+            {uploading ? `⟳ ${uploadProgress?.percent ?? 0}%` : '↑ Upload'}
           </button>
           <input
             ref={topFileInputRef}
@@ -1010,7 +1012,9 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
           onUpload={onUpload}
           onDemo={onDemo}
           uploading={uploading}
+          uploadProgress={uploadProgress}
           uploadError={uploadError}
+          onClearUploadError={onClearUploadError}
           theme={theme}
           notes={notes}
           onNotesChange={setNotes}
@@ -1043,8 +1047,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadError }: {
             onDrop={(event) => { event.preventDefault(); setDragging(false); const file = event.dataTransfer.files[0]; if (file) onUpload(file); }}>
             <input ref={fileInput} className="file-input" type="file" accept=".glb,.gltf" aria-label="Upload 3D model"
               onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) onUpload(file); }} />
-            <button className="upload-button" onClick={() => fileInput.current?.click()} disabled={uploading}>{uploading ? 'Preparing model…' : '↑ Upload your model'}</button>
-            <p>Drop GLB or embedded glTF · up to 50 MB</p>
+            <button className="upload-button" onClick={() => fileInput.current?.click()} disabled={uploading}>{uploading ? `${uploadProgress?.stage || 'Preparing model…'} (${uploadProgress?.percent ?? 0}%)` : '↑ Upload your model'}</button>
+            <p>Drop GLB or embedded glTF · up to {MAX_MODEL_MB} MB</p>
             <span>Files stay in your browser.</span>
             {model.object && <button className="demo-link" onClick={onDemo}>↶ Back to demo</button>}
           </div>
@@ -2175,6 +2179,7 @@ function download(blob: Blob, filename: string) {
 function App() {
   const [model, setModel] = useState<ModelAsset>(DEMO_MODEL);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<ModelUploadProgress | null>(null);
   const [uploadError, setUploadError] = useState('');
   const request = useRef(0);
   useEffect(() => () => { request.current++; }, []);
@@ -2186,18 +2191,20 @@ function App() {
     const initialUrl = params.get('modelUrl') || params.get('model');
     if (initialUrl) {
       setUploading(true);
-      prepareModelFromUrl(initialUrl)
+      setUploadProgress({ percent: 5, stage: 'Downloading 3D model…' });
+      prepareModelFromUrl(initialUrl, undefined, (p) => setUploadProgress(p))
         .then((next) => { setModel(next); setUploadError(''); })
         .catch((err) => setUploadError(err instanceof Error ? err.message : 'Could not load model from URL.'))
-        .finally(() => setUploading(false));
+        .finally(() => { setUploading(false); setUploadProgress(null); });
     }
     const onMessage = (event: MessageEvent) => {
       if (event.data?.type === 'SPATIALKIT_LOAD_MODEL' && typeof event.data.url === 'string') {
         setUploading(true);
-        prepareModelFromUrl(event.data.url)
+        setUploadProgress({ percent: 5, stage: 'Downloading 3D model…' });
+        prepareModelFromUrl(event.data.url, undefined, (p) => setUploadProgress(p))
           .then((next) => { setModel(next); setUploadError(''); })
           .catch((err) => setUploadError(err instanceof Error ? err.message : 'Could not load model from URL.'))
-          .finally(() => setUploading(false));
+          .finally(() => { setUploading(false); setUploadProgress(null); });
       }
     };
     window.addEventListener('message', onMessage);
@@ -2206,19 +2213,38 @@ function App() {
 
   async function upload(file: File) {
     const token = ++request.current;
-    setUploading(true); setUploadError('');
+    setUploading(true);
+    setUploadError('');
+    setUploadProgress({ percent: 2, stage: `Reading ${file.name}…` });
     try {
-      const next = await prepareModel(file);
+      const next = await prepareModel(file, (p) => {
+        if (token === request.current) setUploadProgress(p);
+      });
       if (token !== request.current) { next.dispose?.(); return; }
       setModel(next);
     } catch (error) {
       if (token === request.current) setUploadError(error instanceof Error ? error.message : 'This model could not be loaded. Try exporting it as an embedded GLB.');
-    } finally { if (token === request.current) setUploading(false); }
+    } finally {
+      if (token === request.current) {
+        setUploading(false);
+        setUploadProgress(null);
+      }
+    }
   }
   function demo() {
-    request.current++; setUploading(false); setUploadError(''); setModel(DEMO_MODEL);
+    request.current++; setUploading(false); setUploadProgress(null); setUploadError(''); setModel(DEMO_MODEL);
   }
-  return <Workbench model={model} onUpload={upload} onDemo={demo} uploading={uploading} uploadError={uploadError} />;
+  return (
+    <Workbench
+      model={model}
+      onUpload={upload}
+      onDemo={demo}
+      uploading={uploading}
+      uploadProgress={uploadProgress}
+      uploadError={uploadError}
+      onClearUploadError={() => setUploadError('')}
+    />
+  );
 }
 
 createRoot(document.getElementById('root')!).render(
