@@ -208,8 +208,8 @@ export function IconNotes() {
 // ─── Responsive Camera Framing: Centers Model by Default on Desktop, Laptop & Mobile ──
 export function ResponsiveCameraFraming({
   controlsRef,
-  basePosition = [4.6, 2.5, 4.8],
-  target = [0, 1.15, 0],
+  basePosition = [3.55, 2.05, 3.70],
+  target = [0, 1.02, 0],
 }: {
   controlsRef?: React.RefObject<ComponentRef<typeof BlenderControls> | null>;
   basePosition?: [number, number, number];
@@ -220,7 +220,7 @@ export function ResponsiveCameraFraming({
 
   useEffect(() => {
     const aspect = size.width / Math.max(1, size.height);
-    const key = `${aspect.toFixed(2)}-${basePosition.join(',')}-${target.join(',')}`;
+    const key = `${Math.round(size.width)}x${Math.round(size.height)}-${basePosition.join(',')}-${target.join(',')}`;
     if (key === prevKeyRef.current) return;
     prevKeyRef.current = key;
 
@@ -228,8 +228,26 @@ export function ResponsiveCameraFraming({
     const vBase = new Vector3(...basePosition);
     const vOffset = vBase.clone().sub(vTarget);
 
-    // On mobile / portrait screens (aspect < 1.3), pull camera distance back so full model fits horizontally
-    const factor = aspect < 1.3 ? Math.min(2.35, Math.max(1.15, 1.48 / aspect)) : 1.0;
+    let factor = 1.0;
+    if (aspect < 1.3) {
+      // Mobile / portrait screens: pull camera distance back so full model fits horizontally
+      factor = Math.min(2.35, Math.max(1.15, 1.48 / aspect));
+    } else {
+      // Desktop & laptop screens:
+      // Side panels take 280px left and 280px right (560px total).
+      // Available width between panels is (size.width - 560).
+      // Ensure the model never gets clipped by side panels on compact laptop screens
+      const availableCenterWidth = Math.max(320, size.width - 560);
+      if (availableCenterWidth < 460) {
+        factor = Math.max(1.0, 460 / availableCenterWidth);
+      }
+      // Ensure tall models do not clip topbar or bottom dock on short laptop screens
+      if (size.height < 520) {
+        const heightFactor = Math.max(1.0, 520 / Math.max(320, size.height));
+        factor = Math.max(factor, Math.min(1.22, heightFactor));
+      }
+    }
+
     const newPos = vTarget.clone().add(vOffset.multiplyScalar(factor));
 
     camera.position.copy(newPos);
@@ -1370,7 +1388,7 @@ export function Playground({
       {/* ─── 3D Canvas with Responsive Camera Framing for Mobile & Desktop ─── */}
       <Canvas
         dpr={[1, 2]}
-        camera={{ position: [4.6, 2.5, 4.8], fov: 40 }}
+        camera={{ position: [3.55, 2.05, 3.70], fov: 40 }}
         gl={{ localClippingEnabled: true, preserveDrawingBuffer: true }}
         onPointerMissed={() => {
           if (selectedPartId) {
@@ -1498,7 +1516,7 @@ export function Playground({
               ? [0, 2.0, 0]
               : isMobileElevationTool
               ? [0, 0.35, 0]
-              : [0, 1.15, 0]
+              : [0, 1.02, 0]
           }
           minDistance={1.8}
           maxDistance={28}
@@ -1509,8 +1527,8 @@ export function Playground({
         {activeTool !== 'gimbal' && (
           <ResponsiveCameraFraming
             controlsRef={controlsRef}
-            basePosition={isMobile ? (isMobileElevationTool ? [5.4, 3.6, 5.6] : [5.4, 3.2, 5.6]) : [4.6, 2.5, 4.8]}
-            target={isMobileElevationTool ? [0, 0.35, 0] : [0, 1.15, 0]}
+            basePosition={isMobile ? (isMobileElevationTool ? [5.4, 3.6, 5.6] : [5.4, 3.2, 5.6]) : [3.55, 2.05, 3.70]}
+            target={isMobileElevationTool ? [0, 0.35, 0] : [0, 1.02, 0]}
           />
         )}
 

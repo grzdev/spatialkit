@@ -1231,7 +1231,7 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadE
 
           <Canvas
             dpr={[1, 2]}
-            camera={{ position: [5.1, 3.7, 5.4], fov: 39 }}
+            camera={{ position: [3.55, 2.05, 3.70], fov: 40 }}
             gl={{ localClippingEnabled: true, preserveDrawingBuffer: true }}
             onPointerMissed={() => { if (!placingHotspot && !tourActive) selectPart(null); }}
             fallback={
@@ -1323,7 +1323,7 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadE
               enableDamping
             />
             {activeModelControl !== 'target' && (
-              <ResponsiveCameraFraming controlsRef={controls} basePosition={[4.8, 2.6, 5.0]} target={[0, 1.15, 0]} />
+              <ResponsiveCameraFraming controlsRef={controls} basePosition={[3.55, 2.05, 3.70]} target={[0, 1.02, 0]} />
             )}
             {activeModelControl === 'target' && (
               <GimbalCameraTurret
