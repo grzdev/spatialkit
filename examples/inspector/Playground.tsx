@@ -475,8 +475,26 @@ const FIXED_GIMBAL_COLORS = [
   '#134e4a',
   '#fed7aa',
   '#e2e8f0',
+  '#eef2f9',
   '#f8fafc',
 ];
+
+function isLightHex(hex: string): boolean {
+  const clean = hex.replace('#', '').trim();
+  const full =
+    clean.length === 3
+      ? clean
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : clean;
+  if (full.length !== 6) return false;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return false;
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.55;
+}
 
 export function Playground({
   model,
@@ -737,7 +755,7 @@ export function Playground({
     heading: 0,
     pitch: 0,
   });
-  const [gimbalBg, setGimbalBg] = useState('#070b14');
+  const [gimbalBg, setGimbalBg] = useState(() => (theme === 'dark' ? '#070b14' : '#eef2f9'));
 
   const [liftHeight, setLiftHeight] = useState(0.0); // Minimum height rests on 3D grid line!
   const [animationProgress, setAnimationProgress] = useState(0);
@@ -745,9 +763,20 @@ export function Playground({
 
   // Studio Lighting & Custom Color Backdrop
   const [envPreset, setEnvPreset] = useState<StudioEnvironmentPreset>('showroom');
-  const [customStudioBg, setCustomStudioBg] = useState<string | null>('#070b14');
-  const [hexInputText, setHexInputText] = useState('070b14');
+  const [customStudioBg, setCustomStudioBg] = useState<string | null>(null);
+  const [hexInputText, setHexInputText] = useState(() => (theme === 'dark' ? '070b14' : 'eef2f9'));
   const [showGrid, setShowGrid] = useState(true);
+
+  // Sync 3D space background with Light / Dark mode toggle
+  useEffect(() => {
+    const nextDefault =
+      theme === 'dark'
+        ? ENVIRONMENT_PRESETS[envPreset].bgDark
+        : ENVIRONMENT_PRESETS[envPreset].bgLight;
+    setCustomStudioBg(null);
+    setGimbalBg(theme === 'dark' ? '#070b14' : '#eef2f9');
+    setHexInputText(nextDefault.replace('#', ''));
+  }, [theme, envPreset]);
 
   // Showcase Features
   const [turntable, setTurntable] = useState(false);
@@ -777,7 +806,7 @@ export function Playground({
   }
 
   const env = ENVIRONMENT_PRESETS[envPreset];
-  const defaultBg = envPreset === 'showroom' ? env.bgDark : (theme === 'dark' ? env.bgDark : env.bgLight);
+  const defaultBg = theme === 'dark' ? env.bgDark : env.bgLight;
 
   // Pitch black dark-room environment for spotlight inspection
   const isSpotlightMode = activeTool === 'light';
@@ -786,6 +815,17 @@ export function Playground({
     : activeTool === 'gimbal'
       ? gimbalBg
       : (customStudioBg ?? defaultBg);
+  const isLightCanvas = isLightHex(canvasBg);
+  const gridPrimary = isLightCanvas
+    ? envPreset === 'warm'
+      ? '#d6d3d1'
+      : '#b8c7e0'
+    : env.gridPrimary;
+  const gridSecondary = isLightCanvas
+    ? envPreset === 'warm'
+      ? '#e7e5e4'
+      : '#d5e0f2'
+    : env.gridSecondary;
 
   // Derive active model control from selected tool
   const activeModelControl: ActiveModelControl = useMemo(() => {
@@ -1446,7 +1486,7 @@ export function Playground({
         </Suspense>
 
         {showGrid && !isSpotlightMode && env.showGrid && (
-          <gridHelper args={[20, 40, env.gridPrimary, env.gridSecondary]} position={[0, mobileModelYOffset - 0.025, 0]} />
+          <gridHelper args={[20, 40, gridPrimary, gridSecondary]} position={[0, mobileModelYOffset - 0.025, 0]} />
         )}
 
         <BlenderControls
@@ -2116,7 +2156,7 @@ export function Playground({
                   ))}
                 </div>
                 <div className="color-palette-swatches" style={{ justifyContent: 'center' }}>
-                  {['#070b14', '#0f172a', '#1e293b', '#111a2c', '#18181b', '#262626', '#f8fafc', '#e2e8f0', '#fed7aa', '#134e4a', '#312e81'].map((c) => (
+                  {['#070b14', '#0f172a', '#1e293b', '#111a2c', '#18181b', '#262626', '#eef2f9', '#f8fafc', '#e2e8f0', '#fed7aa', '#134e4a', '#312e81'].map((c) => (
                     <button
                       key={c}
                       type="button"

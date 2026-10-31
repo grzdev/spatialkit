@@ -46,12 +46,13 @@ function ControlCard({ index, number, title, description, tags, code, toggle3D, 
 }
 
 /** 01 3D Stage: Exploded Industrial Pump Assembly Scrub (Exact match to Playground). */
-function ExplodedPumpViewer({ progress }: { progress: number }) {
+function ExplodedPumpViewer({ progress, theme = 'dark' }: { progress: number; theme?: 'light' | 'dark' }) {
+  const isLight = theme === 'light';
   return (
     <div className="lab-3d-stage">
       <Canvas camera={{ position: [4.4, 2.4, 4.6], fov: 46 }}>
-        <color attach="background" args={['#080e1a']} />
-        <ambientLight intensity={0.9} />
+        <color attach="background" args={[isLight ? '#eef2f9' : '#080e1a']} />
+        <ambientLight intensity={isLight ? 1.15 : 0.9} />
         <directionalLight position={[6, 8, 5]} intensity={2.4} />
         <directionalLight position={[-6, 4, -4]} intensity={1.0} color="#94a3b8" />
         <pointLight position={[0, 4, 3]} intensity={1.4} color="#f8fafc" />
@@ -65,7 +66,7 @@ function ExplodedPumpViewer({ progress }: { progress: number }) {
             />
           </SpatialProvider>
         </Suspense>
-        <gridHelper args={[20, 40, '#1e293b', '#0f172a']} position={[0, -0.025, 0]} />
+        <gridHelper args={[20, 40, isLight ? '#b8c7e0' : '#1e293b', isLight ? '#d5e0f2' : '#0f172a']} position={[0, -0.025, 0]} />
         <BlenderControls target={[0, 1.15, 0]} minDistance={1.8} maxDistance={20} enableDamping />
       </Canvas>
     </div>
@@ -188,6 +189,7 @@ export function HorizontalMechanicalLever({
 function TargetShooterScene({
   joystick,
   onHUDUpdate,
+  theme = 'dark',
 }: {
   joystick: JoystickValue;
   onHUDUpdate: (info: {
@@ -199,7 +201,9 @@ function TargetShooterScene({
     heading: number;
     pitch: number;
   }) => void;
+  theme?: 'light' | 'dark';
 }) {
+  const isLight = theme === 'light';
   const { camera } = useThree();
   const droneRef = useRef<Group>(null);
   const ringRef = useRef<Mesh>(null);
@@ -251,13 +255,13 @@ function TargetShooterScene({
 
   return (
     <>
-      <color attach="background" args={['#070d18']} />
-      <ambientLight intensity={0.9} />
+      <color attach="background" args={[isLight ? '#eef2f9' : '#070d18']} />
+      <ambientLight intensity={isLight ? 1.15 : 0.9} />
       <directionalLight position={[5, 8, 5]} intensity={2.4} />
       <directionalLight position={[-5, -2, -3]} intensity={0.8} color="#0284c7" />
 
       {/* Cyber low-poly wireframe ground grid */}
-      <gridHelper args={[24, 16, '#334155', '#0f172a']} position={[0, -2.4, -4]} />
+      <gridHelper args={[24, 16, isLight ? '#b8c7e0' : '#334155', isLight ? '#d5e0f2' : '#0f172a']} position={[0, -2.4, -4]} />
 
       {/* Floating Low-Poly Radar Buoys */}
       <group position={[-5, 1.2, -7]}>
@@ -300,7 +304,7 @@ function TargetShooterScene({
   );
 }
 
-function TargetTracker3D({ joystick }: { joystick: JoystickValue }) {
+function TargetTracker3D({ joystick, theme = 'dark' }: { joystick: JoystickValue; theme?: 'light' | 'dark' }) {
   const [hud, setHud] = useState({
     isLocked: false,
     distMeters: 48,
@@ -312,9 +316,9 @@ function TargetTracker3D({ joystick }: { joystick: JoystickValue }) {
   });
 
   return (
-    <div className="target-tracker-stage">
+    <div className="target-tracker-stage" style={{ background: theme === 'light' ? '#eef2f9' : '#070d18' }}>
       <Canvas camera={{ position: [0, 0, 0], fov: 52 }}>
-        <TargetShooterScene joystick={joystick} onHUDUpdate={setHud} />
+        <TargetShooterScene joystick={joystick} onHUDUpdate={setHud} theme={theme} />
       </Canvas>
 
       {/* Tactical Military HUD Overlay */}
@@ -1044,7 +1048,7 @@ function SuzanneMonkey({ light }: { light: number }) {
 
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 
-export function ControlsLab({ onBack }: { onBack: () => void }) {
+export function ControlsLab({ onBack, theme = 'dark' }: { onBack: () => void; theme?: 'light' | 'dark' }) {
   const [pendulum, setPendulum] = useState(0.5);
   const [lift, setLift] = useState(0.35);
   const [liftDragging, setLiftDragging] = useState(false);
@@ -1101,7 +1105,7 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
           code={`const [timeline, setTimeline] = useState(0.25);\n<HorizontalMechanicalLever value={timeline} onChange={setTimeline} />\n<SelectableModel src="/pump.glb" explode={timeline} />`}
         >
           {active3D['01'] ? (
-            <ExplodedPumpViewer progress={pendulum} />
+            <ExplodedPumpViewer progress={pendulum} theme={theme} />
           ) : (
             <div className="pendulum-rig">
               <div className="pendulum-pin" />
@@ -1375,7 +1379,7 @@ export function ControlsLab({ onBack }: { onBack: () => void }) {
           code={`const [aim, setAim] = useState({ x: 0, y: 0 });\n<TactileJoystick value={aim} onChange={setAim} />\n// Camera yaw = -aim.x * 47°, pitch = aim.y * 31° -> Missile lock-on`}
         >
           {active3D['07'] ? (
-            <TargetTracker3D joystick={joystick} />
+            <TargetTracker3D joystick={joystick} theme={theme} />
           ) : (
             <div className="joystick-demo">
               <TactileRadar2D joystick={joystick} />

@@ -128,12 +128,12 @@ export const ENVIRONMENT_PRESETS: Record<StudioEnvironmentPreset, EnvironmentCon
   },
   showroom: {
     label: 'Showroom',
-    bgLight: '#090d16',
+    bgLight: '#eef2f9',
     bgDark: '#070b14',
-    ambient: 0.75,
+    ambient: 0.95,
     hemiSky: '#38bdf8',
     hemiGround: '#020617',
-    hemiIntensity: 1.4,
+    hemiIntensity: 1.5,
     keyColor: '#f8fafc',
     keyIntensity: 4.0,
     keyPos: [4, 7, 4],
@@ -146,7 +146,7 @@ export const ENVIRONMENT_PRESETS: Record<StudioEnvironmentPreset, EnvironmentCon
     showGrid: true,
     gridPrimary: '#1e293b',
     gridSecondary: '#0f172a',
-    shadowOpacity: 0.65,
+    shadowOpacity: 0.5,
   },
   warm: {
     label: 'Warm Clay',
@@ -603,7 +603,7 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadE
   const snippet = generateComponent(model, notes);
   const storageKey = notesKey(model.id);
   const env = ENVIRONMENT_PRESETS[envPreset];
-  const defaultBg = envPreset === 'showroom' ? env.bgDark : (theme === 'dark' ? env.bgDark : env.bgLight);
+  const defaultBg = theme === 'dark' ? env.bgDark : env.bgLight;
   const canvasBg = customStudioBg ?? defaultBg;
 
   // Build tour stops ONLY from saved notes/hotspots (user requirement)
@@ -644,8 +644,11 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadE
     setFocusRequest({ partId, point, nonce: Date.now() + Math.random() });
   }
 
-  // Apply theme on mount + change
-  useEffect(() => { applyTheme(theme); }, [theme]);
+  // Apply theme on mount + change, and reset custom backdrop so 3D space rhymes with active theme
+  useEffect(() => {
+    applyTheme(theme);
+    setCustomStudioBg(null);
+  }, [theme]);
 
   // Restore notes from localStorage and reset model-specific selection when model changes
   useEffect(() => {
@@ -1018,7 +1021,7 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadE
       </div>
 
       {activeView === 'controls' ? (
-        <ControlsLab onBack={() => switchView('playground')} />
+        <ControlsLab onBack={() => switchView('playground')} theme={theme} />
       ) : activeView === 'playground' ? (
         <Playground
           model={model}
@@ -1277,7 +1280,15 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadE
             </SceneError>
 
             {env.showGrid && (
-              <gridHelper args={[20, 40, env.gridPrimary, env.gridSecondary]} position={[0, -0.025, 0]} />
+              <gridHelper
+                args={[
+                  20,
+                  40,
+                  theme === 'light' && !customStudioBg && envPreset === 'showroom' ? '#b8c7e0' : env.gridPrimary,
+                  theme === 'light' && !customStudioBg && envPreset === 'showroom' ? '#d5e0f2' : env.gridSecondary,
+                ]}
+                position={[0, -0.025, 0]}
+              />
             )}
             <BlenderControls
               ref={controls}
