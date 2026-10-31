@@ -549,7 +549,7 @@ export function Playground({
   // Active Tool Selection & Responsive Sidebar: Default to 'inspect'!
   const [activeTool, setActiveTool] = useState<string | null>('inspect');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [consoleMinimized, setConsoleMinimized] = useState(false);
+  const [consoleMinimized, setConsoleMinimized] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
 
   // ─── 3D Inspector, Hotspot & Guided Tour State ──────────────────────────────
   const storageKey = notesKey(model.id);
@@ -583,8 +583,8 @@ export function Playground({
   const [draftLabel, setDraftLabel] = useState('');
   const [showAssembly, setShowAssembly] = useState(false);
   const [assemblyFilter, setAssemblyFilter] = useState('');
-  const [tourPanelOpen, setTourPanelOpen] = useState(false);
-  const [tourPanelMinimized, setTourPanelMinimized] = useState(false);
+  const [tourPanelOpen, setTourPanelOpen] = useState(true);
+  const [tourPanelMinimized, setTourPanelMinimized] = useState(true);
   const [showPlacementHint, setShowPlacementHint] = useState(true);
 
   // Auto-dismiss placement hint banner after 10 seconds

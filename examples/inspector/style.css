@@ -4685,9 +4685,26 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   .playground-left-stack {
     top: 8px;
     left: 10px;
-    max-width: calc(100% - 170px);
+    max-width: calc(100% - 150px);
   }
   .inspector-tour-panel {
+    width: auto;
+    max-width: min(290px, calc(100vw - 20px));
+    padding: 6px 10px;
+    max-height: calc(100vh - 180px);
+  }
+  .inspector-tour-panel.minimized {
+    max-height: 42px;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+  .inspector-tour-panel.minimized .console-header-title strong {
+    font-size: 10px;
+  }
+  .inspector-tour-panel.minimized .console-header-title span {
+    font-size: 8.5px;
+  }
+  .inspector-tour-panel.minimized .tour-panel-body {
     display: none !important;
   }
   .playground-upload-cta {
