@@ -583,7 +583,7 @@ export function Playground({
   const [draftLabel, setDraftLabel] = useState('');
   const [showAssembly, setShowAssembly] = useState(false);
   const [assemblyFilter, setAssemblyFilter] = useState('');
-  const [tourPanelOpen, setTourPanelOpen] = useState(true);
+  const [tourPanelOpen, setTourPanelOpen] = useState(false);
   const [tourPanelMinimized, setTourPanelMinimized] = useState(false);
   const [showPlacementHint, setShowPlacementHint] = useState(true);
 
@@ -943,6 +943,11 @@ export function Playground({
   function handleSurfaceClick(hit: SurfaceHit) {
     if (activeTool === 'inspect') {
       const partId = hit.part.id;
+
+      // Automatically open the hotspots tab with ease when any part is clicked
+      setTourPanelOpen(true);
+      setTourPanelMinimized(false);
+
       if (selectedPartId === partId) {
         // Deselect currently selected part if clicked again
         setSelectedPartId(null);
@@ -1586,28 +1591,39 @@ export function Playground({
 
             {!tourPanelMinimized && (
               <div className="tour-panel-body">
+                {/* Prominently highlight the currently clicked / selected part */}
+                {selectedPartId && (
+                  <div className="inspector-active-part-card">
+                    <div className="active-part-info">
+                      <span className="active-part-dot" />
+                      <span className="active-part-label">SELECTED PART:</span>
+                      <strong className="active-part-name" title={selectedPartId.replace(/^[^/]+\//, '')}>
+                        {selectedPartId.replace(/^[^/]+\//, '')}
+                      </strong>
+                    </div>
+                    <button
+                      type="button"
+                      className="active-part-clear-btn"
+                      onClick={() => {
+                        setSelectedPartId(null);
+                        selectRef.current(null);
+                        setHighlightedNoteId(null);
+                        setPendingPoint(null);
+                        setPendingWorldBeacon(null);
+                        setPendingTarget(null);
+                      }}
+                      title="Deselect part"
+                      aria-label="Deselect part"
+                    >
+                      ✕ Deselect
+                    </button>
+                  </div>
+                )}
+
                 {/* Hotspots list with active selection highlight */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
                   <div className="inspector-section-label">
                     <span>SAVED HOTSPOTS ({notes.length})</span>
-                    {selectedPartId && (
-                      <button
-                        type="button"
-                        className="inspector-deselect-chip"
-                        onClick={() => {
-                          setSelectedPartId(null);
-                          selectRef.current(null);
-                          setHighlightedNoteId(null);
-                          setPendingPoint(null);
-                          setPendingWorldBeacon(null);
-                          setPendingTarget(null);
-                        }}
-                        title="Click to deselect part"
-                      >
-                        <span>ACTIVE: {selectedPartId.replace(/^[^/]+\//, '')}</span>
-                        <span className="deselect-x">✕</span>
-                      </button>
-                    )}
                   </div>
 
                   {notes.length > 0 ? (

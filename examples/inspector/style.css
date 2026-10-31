@@ -4434,9 +4434,20 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   padding: 12px 14px;
   gap: 10px;
   pointer-events: auto;
-  animation: console-slide-up 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: panel-reveal-ease 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
   transition: max-height 0.24s cubic-bezier(0.16, 1, 0.3, 1), padding 0.2s ease;
+}
+
+@keyframes panel-reveal-ease {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 .inspector-tour-panel.minimized {
   max-height: 48px;
@@ -4462,6 +4473,69 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
 .tour-panel-body::-webkit-scrollbar-thumb {
   background: rgba(148, 163, 184, 0.3);
   border-radius: 2px;
+}
+
+/* ─── Active Selected Part Highlight Card in Hotspots Panel ─────────────── */
+.inspector-active-part-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(45, 212, 191, 0.10);
+  border: 1px solid rgba(45, 212, 191, 0.38);
+  border-radius: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  animation: console-slide-up 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.active-part-info {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow: hidden;
+}
+.active-part-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2dd4bf;
+  box-shadow: 0 0 10px #2dd4bf, 0 0 4px #2dd4bf;
+  flex-shrink: 0;
+  animation: beacon-pulse 2s ease-in-out infinite;
+}
+.active-part-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: #2dd4bf;
+  flex-shrink: 0;
+}
+.active-part-name {
+  font-size: 11px;
+  color: #f8fafc;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.active-part-clear-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.active-part-clear-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
 }
 .inspector-reopen-panel-btn {
   width: 100%;
@@ -4974,6 +5048,31 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
 :root:not([data-theme="dark"]) .console-minimize-btn:hover {
   background: var(--surface-3);
   color: var(--ink);
+}
+:root:not([data-theme="dark"]) .inspector-active-part-card {
+  background: rgba(37, 99, 235, 0.07);
+  border-color: rgba(37, 99, 235, 0.30);
+  box-shadow: 0 4px 12px rgba(26, 36, 63, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+:root:not([data-theme="dark"]) .active-part-dot {
+  background: #2563eb;
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.6);
+}
+:root:not([data-theme="dark"]) .active-part-label {
+  color: #2563eb;
+}
+:root:not([data-theme="dark"]) .active-part-name {
+  color: #0f172a;
+}
+:root:not([data-theme="dark"]) .active-part-clear-btn {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #64748b;
+}
+:root:not([data-theme="dark"]) .active-part-clear-btn:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #dc2626;
 }
 :root:not([data-theme="dark"]) .inspector-note-card {
   background: var(--surface-2);
