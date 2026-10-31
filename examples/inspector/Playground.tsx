@@ -205,6 +205,25 @@ export function IconNotes() {
   );
 }
 
+export function IconChevronDown({ className = '' }: { className?: string }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
 // ─── Responsive Camera Framing: Centers Model by Default on Desktop, Laptop & Mobile ──
 export function ResponsiveCameraFraming({
   controlsRef,
@@ -1563,7 +1582,8 @@ export function Playground({
               <div
                 className="console-header-title"
                 onClick={() => setTourPanelMinimized((m) => !m)}
-                style={{ cursor: 'pointer' }}
+                style={{ cursor: 'pointer', userSelect: 'none' }}
+                title={tourPanelMinimized ? 'Click to expand' : 'Click to collapse'}
               >
                 <strong>✦ HOTSPOTS & TOUR</strong>
                 <span>{notes.length} STOPS · {parts.length} PARTS</span>
@@ -1573,18 +1593,10 @@ export function Playground({
                   type="button"
                   className="console-minimize-btn"
                   onClick={() => setTourPanelMinimized((m) => !m)}
-                  title={tourPanelMinimized ? 'Expand panel' : 'Drop panel down'}
+                  title={tourPanelMinimized ? 'Expand panel' : 'Collapse panel'}
+                  aria-label={tourPanelMinimized ? 'Expand hotspots panel' : 'Collapse hotspots panel'}
                 >
-                  {tourPanelMinimized ? '▲' : '▼'}
-                </button>
-                <button
-                  type="button"
-                  className="console-close-btn"
-                  onClick={() => setTourPanelOpen(false)}
-                  aria-label="Close hotspots and tour panel"
-                  title="Close panel"
-                >
-                  ×
+                  <IconChevronDown className={tourPanelMinimized ? '' : 'rotate-180'} />
                 </button>
               </div>
             </div>
@@ -1846,23 +1858,10 @@ export function Playground({
                 type="button"
                 className="console-minimize-btn"
                 onClick={() => setConsoleMinimized((m) => !m)}
-                title={consoleMinimized ? 'Expand controls' : 'Minimize controls'}
+                title={consoleMinimized ? 'Expand controls' : 'Collapse controls'}
+                aria-label={consoleMinimized ? 'Expand controls' : 'Collapse controls'}
               >
-                {consoleMinimized ? '▲' : '▼'}
-              </button>
-              <button
-                type="button"
-                className="console-close-btn"
-                onClick={() => {
-                  setActiveTool(null);
-                  setPendingPoint(null);
-                  setPendingTarget(null);
-                  setDraftLabel('');
-                  setCrossSectionEnabled(false);
-                }}
-                aria-label="Close active console"
-              >
-                ×
+                <IconChevronDown className={consoleMinimized ? 'rotate-180' : ''} />
               </button>
             </div>
           </div>
@@ -1879,17 +1878,15 @@ export function Playground({
             {/* 3D Inspector: Contextual Hotspot Creator & Persistence / Export Suite */}
             {activeTool === 'inspect' && (
               <div className="inspector-console-wrap" style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {/* Quick button to reopen Tour & Hotspots panel if user closed it */}
-                {!tourPanelOpen && (
+                {/* Quick button to expand Tour & Hotspots panel if collapsed */}
+                {tourPanelMinimized && (
                   <button
                     type="button"
                     className="inspector-reopen-panel-btn"
-                    onClick={() => {
-                      setTourPanelOpen(true);
-                      setTourPanelMinimized(false);
-                    }}
+                    onClick={() => setTourPanelMinimized(false)}
+                    title="Expand Hotspots & Tour panel"
                   >
-                    <span>✦ Show Hotspots & Tour Panel</span>
+                    <span>✦ Expand Hotspots & Tour Panel</span>
                     <span style={{ fontSize: 10 }}>({notes.length} stops)</span>
                   </button>
                 )}
