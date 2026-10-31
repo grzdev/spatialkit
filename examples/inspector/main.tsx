@@ -324,14 +324,20 @@ function ViewportDirector({
 // ─── Theme helpers ──────────────────────────────────────────────────────────
 function getInitialTheme(): 'light' | 'dark' {
   try {
-    const stored = localStorage.getItem('sk-theme');
-    if (stored === 'dark' || stored === 'light') return stored;
+    localStorage.removeItem('sk-theme');
   } catch {}
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  return 'light';
 }
 function applyTheme(theme: 'light' | 'dark') {
   document.documentElement.dataset.theme = theme;
-  try { localStorage.setItem('sk-theme', theme); } catch {}
+  document.documentElement.style.colorScheme = theme;
+  const metaColor = theme === 'dark' ? '#0e1420' : '#fafcff';
+  document.querySelectorAll('meta[name="theme-color"]').forEach((el) => {
+    el.setAttribute('content', metaColor);
+  });
 }
 
 // ─── Interactive 3D Model Rig (Control Lab tools applied to loaded model) ───
@@ -649,6 +655,21 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadE
     applyTheme(theme);
     setCustomStudioBg(null);
   }, [theme]);
+
+  // Automatically follow the user's phone / OS light or dark mode setting in real time
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleSystemThemeChange = (e: MediaQueryListEvent | MediaQueryList) => {
+      setTheme(e.matches ? 'dark' : 'light');
+    };
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleSystemThemeChange);
+      return () => mediaQuery.removeEventListener('change', handleSystemThemeChange);
+    }
+    mediaQuery.addListener(handleSystemThemeChange);
+    return () => mediaQuery.removeListener(handleSystemThemeChange);
+  }, []);
 
   // Restore notes from localStorage and reset model-specific selection when model changes
   useEffect(() => {
