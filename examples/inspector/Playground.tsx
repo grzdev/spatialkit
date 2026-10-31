@@ -568,7 +568,7 @@ export function Playground({
   // Active Tool Selection & Responsive Sidebar: Default to 'inspect'!
   const [activeTool, setActiveTool] = useState<string | null>('inspect');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [consoleMinimized, setConsoleMinimized] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
+  const [consoleMinimized, setConsoleMinimized] = useState(true);
 
   // ─── 3D Inspector, Hotspot & Guided Tour State ──────────────────────────────
   const storageKey = notesKey(model.id);
@@ -829,16 +829,20 @@ export function Playground({
 
   // Tool Selection with immediate single-tap activation (no double-click toggle bugs)
   function selectTool(toolName: string) {
+    if (activeTool === toolName) {
+      // Tapping active dock item toggles controls collapsed / expanded
+      setConsoleMinimized((m) => !m);
+      return;
+    }
     setActiveTool(toolName);
-    setConsoleMinimized(false);
+    // Controls for newly selected tabs start collapsed
+    setConsoleMinimized(true);
     setCrossSectionEnabled(toolName === 'slicer');
     if (toolName !== 'inspect') {
       setPendingPoint(null);
       setPendingTarget(null);
       setHighlightedNoteId(null);
       setTourActive(false);
-    } else {
-      setTourPanelOpen(true);
     }
   }
 
@@ -2440,7 +2444,6 @@ export function Playground({
               className={`sidebar-tool-card ${activeTool === 'inspect' ? 'active' : ''}`}
               onClick={() => {
                 selectTool('inspect');
-                setConsoleMinimized(false);
                 setSidebarOpen(false);
               }}
             >
@@ -2463,7 +2466,6 @@ export function Playground({
               className={`sidebar-tool-card ${activeTool === 'light' ? 'active' : ''}`}
               onClick={() => {
                 selectTool('light');
-                setConsoleMinimized(false);
                 setSidebarOpen(false);
               }}
             >
@@ -2482,7 +2484,6 @@ export function Playground({
               className={`sidebar-tool-card ${activeTool === 'gimbal' ? 'active' : ''}`}
               onClick={() => {
                 selectTool('gimbal');
-                setConsoleMinimized(false);
                 setSidebarOpen(false);
               }}
             >
@@ -2501,7 +2502,6 @@ export function Playground({
               className={`sidebar-tool-card ${activeTool === 'lift' ? 'active' : ''}`}
               onClick={() => {
                 selectTool('lift');
-                setConsoleMinimized(false);
                 setSidebarOpen(false);
               }}
             >
@@ -2520,7 +2520,6 @@ export function Playground({
               className={`sidebar-tool-card ${activeTool === 'scrubber' ? 'active' : ''}`}
               onClick={() => {
                 selectTool('scrubber');
-                setConsoleMinimized(false);
                 setSidebarOpen(false);
               }}
             >
@@ -2543,7 +2542,6 @@ export function Playground({
               className={`sidebar-tool-card ${activeTool === 'studio' ? 'active' : ''}`}
               onClick={() => {
                 selectTool('studio');
-                setConsoleMinimized(false);
                 setSidebarOpen(false);
               }}
             >
@@ -2566,7 +2564,6 @@ export function Playground({
               className={`sidebar-tool-card ${activeTool === 'slicer' ? 'active' : ''}`}
               onClick={() => {
                 selectTool('slicer');
-                setConsoleMinimized(false);
                 setSidebarOpen(false);
               }}
             >
