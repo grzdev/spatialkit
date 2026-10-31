@@ -36,8 +36,8 @@
     <!-- Apply device/system theme before React renders to prevent flash -->
     <script>
       try {
-        localStorage.removeItem('sk-theme');
-        var isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var stored = localStorage.getItem('sk-theme');
+        var isDark = (stored === 'dark') || (!stored && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
         document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
       } catch(e) {}
     </script>

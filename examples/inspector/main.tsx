@@ -324,7 +324,8 @@ function ViewportDirector({
 // ─── Theme helpers ──────────────────────────────────────────────────────────
 function getInitialTheme(): 'light' | 'dark' {
   try {
-    localStorage.removeItem('sk-theme');
+    const stored = localStorage.getItem('sk-theme');
+    if (stored === 'dark' || stored === 'light') return stored;
   } catch {}
   if (typeof window !== 'undefined' && window.matchMedia) {
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -333,7 +334,9 @@ function getInitialTheme(): 'light' | 'dark' {
 }
 function applyTheme(theme: 'light' | 'dark') {
   document.documentElement.dataset.theme = theme;
-  document.documentElement.style.colorScheme = theme;
+  try {
+    localStorage.setItem('sk-theme', theme);
+  } catch {}
   const metaColor = theme === 'dark' ? '#0e1420' : '#fafcff';
   document.querySelectorAll('meta[name="theme-color"]').forEach((el) => {
     el.setAttribute('content', metaColor);
@@ -522,6 +525,7 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadE
   const [notesModelId, setNotesModelId] = useState(model.id);
   const [storageReady, setStorageReady] = useState(false);
   const [theme, setTheme]             = useState<'light' | 'dark'>(getInitialTheme);
+  const lastUserToggleTimeRef         = useRef(0);
   type ActiveView = 'inspector' | 'playground' | 'controls';
   const [activeView, setActiveView]   = useState<ActiveView>(() => {
     if (window.location.hash === '#controls') return 'controls';
@@ -661,7 +665,10 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadE
     if (typeof window === 'undefined' || !window.matchMedia) return;
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleSystemThemeChange = (e: MediaQueryListEvent | MediaQueryList) => {
-      setTheme(e.matches ? 'dark' : 'light');
+      // Ignore event if user recently manually clicked the theme toggle
+      if (Date.now() - lastUserToggleTimeRef.current < 2500) return;
+      const nextSys = e.matches ? 'dark' : 'light';
+      setTheme(nextSys);
     };
     if (typeof mediaQuery.addEventListener === 'function') {
       mediaQuery.addEventListener('change', handleSystemThemeChange);
@@ -904,16 +911,6 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadE
             spatialkit
           </a>
 
-          {/* Quick Upload action placed directly in navbar next to logo */}
-          <button
-            type="button"
-            className="topbar-upload-btn"
-            onClick={() => topFileInputRef.current?.click()}
-            disabled={uploading}
-            title={`Upload a custom 3D model (.glb / .gltf up to ${MAX_MODEL_MB} MB)`}
-          >
-            {uploading ? `⟳ ${uploadProgress?.percent ?? 0}%` : '↑ Upload'}
-          </button>
           <input
             ref={topFileInputRef}
             type="file"
@@ -983,7 +980,12 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadE
           {/* Dark / Light mode toggle */}
           <button
             className="theme-toggle"
-            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+            onClick={() => {
+              lastUserToggleTimeRef.current = Date.now();
+              const next = theme === 'dark' ? 'light' : 'dark';
+              applyTheme(next);
+              setTheme(next);
+            }}
             aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
             title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
           >
