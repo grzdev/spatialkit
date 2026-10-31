@@ -1031,16 +1031,16 @@ export function Playground({
       <div className="playground-credit-badge" role="contentinfo" aria-label="3D Model Attribution">
         <span className="credit-icon">©</span>
         {model.object ? (
-          <span>
-            Custom Model: <strong>{model.name}</strong>
+          <span className="credit-text" title={model.name}>
+            <span>Model:</span> <strong className="credit-name">{model.name}</strong>
           </span>
         ) : activeTool === 'gimbal' ? (
-          <span>
-            Model from <a href="https://sketchfab.com/ikagogava" target="_blank" rel="noreferrer">Ika Gogava</a>
+          <span className="credit-text">
+            <span>Model from</span> <a href="https://sketchfab.com/ikagogava" target="_blank" rel="noreferrer">Ika Gogava</a>
           </span>
         ) : (
-          <span>
-            Model from <strong>SpatialKit</strong>
+          <span className="credit-text">
+            <span>Model from</span> <strong className="credit-name">SpatialKit</strong>
           </span>
         )}
       </div>

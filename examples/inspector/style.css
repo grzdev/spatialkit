@@ -4214,7 +4214,7 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   position: absolute;
   bottom: 20px;
   left: 20px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
@@ -4230,12 +4230,43 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   pointer-events: auto;
   transition: all 0.2s ease;
   white-space: nowrap;
-  max-width: 200px;
+  max-width: min(280px, calc(50vw - 230px));
+  min-width: 0;
+  overflow: hidden;
+}
+.playground-credit-badge .credit-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 11px;
+}
+.playground-credit-badge .credit-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.playground-credit-badge .credit-text > span {
+  flex-shrink: 0;
+}
+.playground-credit-badge .credit-name {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  color: #f1f5f9;
 }
 .playground-credit-badge a {
   color: #38bdf8;
   text-decoration: none;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 .playground-credit-badge a:hover {
   text-decoration: underline;
@@ -4256,7 +4287,7 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
     left: 14px;
     font-size: 9.5px;
     padding: 5px 8px;
-    max-width: 170px;
+    max-width: min(210px, calc(50vw - 210px));
   }
 }
 
@@ -4266,6 +4297,7 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
     left: 12px;
     font-size: 10px;
     padding: 6px 10px;
+    max-width: calc(100vw - 24px);
   }
 }
 
