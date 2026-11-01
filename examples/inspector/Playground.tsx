@@ -565,11 +565,29 @@ export function Playground({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const noteFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Mobile screen detection for responsive camera framing, layout & initial collapse state
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
+
   // Active Tool Selection & Responsive Sidebar: Default to 'inspect'!
   const [activeTool, setActiveTool] = useState<string | null>('inspect');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Control rigs: on mobile start collapsed (true), on laptop/desktop start opened (false)!
   const [consoleMinimized, setConsoleMinimized] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth <= 768;
+      setIsMobile((prev) => {
+        if (prev !== mobile) {
+          setConsoleMinimized(mobile);
+          setTourPanelMinimized(mobile);
+        }
+        return mobile;
+      });
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // ─── 3D Inspector, Hotspot & Guided Tour State ──────────────────────────────
   const storageKey = notesKey(model.id);
@@ -604,7 +622,8 @@ export function Playground({
   const [showAssembly, setShowAssembly] = useState(false);
   const [assemblyFilter, setAssemblyFilter] = useState('');
   const [tourPanelOpen, setTourPanelOpen] = useState(true);
-  const [tourPanelMinimized, setTourPanelMinimized] = useState(true);
+  // Hotspots panel: on mobile start collapsed (true), on laptop/desktop start opened (false)!
+  const [tourPanelMinimized, setTourPanelMinimized] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
   const [showPlacementHint, setShowPlacementHint] = useState(true);
 
   // Auto-dismiss placement hint banner after 10 seconds
@@ -622,28 +641,12 @@ export function Playground({
     setPendingTarget(null);
     setDraftLabel('');
     setTourActive(false);
-    setTourPanelMinimized(true);
+    setTourPanelMinimized(isMobile);
     setFocusRequest(null);
     if (propNotes === undefined) {
       setInternalNotes(loadNotesFromStorage(model.id));
     }
-  }, [model.id]);
-
-  // Mobile screen detection for responsive camera framing & model elevating
-  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
-  useEffect(() => {
-    const handleResize = () => {
-      const mobile = window.innerWidth <= 768;
-      setIsMobile((prev) => {
-        if (prev !== mobile) {
-          setConsoleMinimized(mobile);
-        }
-        return mobile;
-      });
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [model.id, isMobile]);
 
   const isMobileElevationTool = isMobile && activeTool && activeTool !== 'inspect' && activeTool !== 'lift';
   const mobileModelYOffset = isMobileElevationTool ? 1.25 : 0;
@@ -854,8 +857,8 @@ export function Playground({
       setHighlightedNoteId(null);
       setTourActive(false);
     } else {
-      // Hotspots div starts closed until a part of the mesh is clicked
-      setTourPanelMinimized(true);
+      // Hotspots panel: on mobile start collapsed, on laptop/desktop start opened!
+      setTourPanelMinimized(isMobile);
     }
   }
 
