@@ -46,8 +46,12 @@ function SceneBridge({
   onSelectedPartChange?: (partId: string | null) => void;
 }) {
   const { parts, select, selectedPart } = useSpatial();
+  const prevPartsLengthRef = useRef(-1);
   useEffect(() => {
-    onParts(parts);
+    if (parts.length !== prevPartsLengthRef.current) {
+      prevPartsLengthRef.current = parts.length;
+      onParts(parts);
+    }
   }, [parts, onParts]);
   useEffect(() => {
     selectRef.current = select;
@@ -533,6 +537,12 @@ function isLightHex(hex: string): boolean {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.55;
 }
 
+// True small mobile phone viewports (<= 640px). Laptops, desktop PCs and tablets start fully OPENED!
+function isPhoneViewport(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.innerWidth <= 640;
+}
+
 export function Playground({
   model,
   onUpload,
@@ -566,17 +576,17 @@ export function Playground({
   const noteFileInputRef = useRef<HTMLInputElement>(null);
 
   // Mobile screen detection for responsive camera framing, layout & initial collapse state
-  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
+  const [isMobile, setIsMobile] = useState(() => isPhoneViewport());
 
   // Active Tool Selection & Responsive Sidebar: Default to 'inspect'!
   const [activeTool, setActiveTool] = useState<string | null>('inspect');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  // Control rigs: on mobile start collapsed (true), on laptop/desktop start opened (false)!
-  const [consoleMinimized, setConsoleMinimized] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
+  // Control rigs & panels: start OPENED (false) on desktop/laptop screens (> 640px), collapsed ONLY on mobile phones (<= 640px)
+  const [consoleMinimized, setConsoleMinimized] = useState(() => isPhoneViewport());
 
   useEffect(() => {
     const handleResize = () => {
-      const mobile = window.innerWidth <= 768;
+      const mobile = isPhoneViewport();
       setIsMobile((prev) => {
         if (prev !== mobile) {
           setConsoleMinimized(mobile);
@@ -622,8 +632,8 @@ export function Playground({
   const [showAssembly, setShowAssembly] = useState(false);
   const [assemblyFilter, setAssemblyFilter] = useState('');
   const [tourPanelOpen, setTourPanelOpen] = useState(true);
-  // Hotspots panel: on mobile start collapsed (true), on laptop/desktop start opened (false)!
-  const [tourPanelMinimized, setTourPanelMinimized] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
+  // Hotspots panel: start OPENED (false) on desktop/laptop screens (> 640px), collapsed ONLY on mobile phones (<= 640px)
+  const [tourPanelMinimized, setTourPanelMinimized] = useState(() => isPhoneViewport());
   const [showPlacementHint, setShowPlacementHint] = useState(true);
 
   // Auto-dismiss placement hint banner after 10 seconds
@@ -641,12 +651,12 @@ export function Playground({
     setPendingTarget(null);
     setDraftLabel('');
     setTourActive(false);
-    setTourPanelMinimized(isMobile);
+    setTourPanelMinimized(isPhoneViewport());
     setFocusRequest(null);
     if (propNotes === undefined) {
       setInternalNotes(loadNotesFromStorage(model.id));
     }
-  }, [model.id, isMobile]);
+  }, [model.id]);
 
   const isMobileElevationTool = isMobile && activeTool && activeTool !== 'inspect' && activeTool !== 'lift';
   const mobileModelYOffset = isMobileElevationTool ? 1.25 : 0;
@@ -848,8 +858,8 @@ export function Playground({
       return;
     }
     setActiveTool(toolName);
-    // Control rigs: on mobile start collapsed, on laptop/desktop start opened!
-    setConsoleMinimized(isMobile);
+    // Control rigs: on mobile phones start collapsed, on laptop/desktop start OPENED!
+    setConsoleMinimized(isPhoneViewport());
     setCrossSectionEnabled(toolName === 'slicer');
     if (toolName !== 'inspect') {
       setPendingPoint(null);
@@ -857,8 +867,8 @@ export function Playground({
       setHighlightedNoteId(null);
       setTourActive(false);
     } else {
-      // Hotspots panel: on mobile start collapsed, on laptop/desktop start opened!
-      setTourPanelMinimized(isMobile);
+      // Hotspots panel: on mobile phones start collapsed, on laptop/desktop start OPENED!
+      setTourPanelMinimized(isPhoneViewport());
     }
   }
 
@@ -1431,9 +1441,14 @@ export function Playground({
 
       {/* ─── 3D Canvas with Responsive Camera Framing for Mobile & Desktop ─── */}
       <Canvas
-        dpr={[1, 2]}
+        dpr={typeof window !== 'undefined' ? Math.min(1.5, window.devicePixelRatio || 1) : 1}
+        performance={{ min: 0.65 }}
         camera={{ position: [3.55, 2.05, 3.70], fov: 40 }}
-        gl={{ localClippingEnabled: true, preserveDrawingBuffer: true }}
+        gl={{
+          localClippingEnabled: true,
+          preserveDrawingBuffer: true,
+          powerPreference: 'high-performance',
+        }}
         onPointerMissed={() => {
           if (selectedPartId) {
             setSelectedPartId(null);

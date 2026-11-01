@@ -1978,6 +1978,15 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   background: rgba(148, 163, 184, 0.5);
 }
 
+.playground-active-console.minimized {
+  max-height: 52px;
+  overflow: hidden;
+  padding: 10px 18px;
+}
+.playground-active-console.minimized .console-body {
+  display: none !important;
+}
+
 @keyframes console-slide-up {
   from { opacity: 0; transform: translateY(10px) scale(0.96); }
   to { opacity: 1; transform: translateY(0); }
@@ -2125,9 +2134,6 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
     max-height: 40vh;
     overflow-y: auto;
     animation: console-sheet-up 0.24s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .playground-active-console.inspector-console {
-    display: none !important;
   }
   .playground-active-console.minimized {
     max-height: 44px;

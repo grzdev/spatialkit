@@ -183,8 +183,16 @@ export function SelectableObject({
   return <group position={position} rotation={rotation} scale={scale}>
     <group scale={framing.scale} position={framing.position}>
     <primitive object={instance.root} dispose={null}
-      onPointerOver={(event: ThreeEvent<PointerEvent>) => { event.stopPropagation(); setHovered(hitId(event) ?? null); }}
-      onPointerOut={() => setHovered(null)}
+      onPointerOver={(event: ThreeEvent<PointerEvent>) => {
+        if (event.buttons > 0) return; // Do not raycast/hover while dragging or orbiting!
+        event.stopPropagation();
+        const id = hitId(event);
+        if (id) setHovered((prev) => (prev === id ? prev : id));
+      }}
+      onPointerOut={(event: ThreeEvent<PointerEvent>) => {
+        if (event.buttons > 0) return;
+        setHovered((prev) => (prev === null ? prev : null));
+      }}
       onClick={(event: ThreeEvent<MouseEvent>) => {
         if (event.delta > 7) return;
         event.stopPropagation();

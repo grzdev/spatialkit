@@ -533,15 +533,6 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadE
     return 'playground';
   });
 
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  useEffect(() => {
-    const onPointerMove = (e: PointerEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY });
-    };
-    window.addEventListener('pointermove', onPointerMove, { passive: true });
-    return () => window.removeEventListener('pointermove', onPointerMove);
-  }, []);
-
   const selectRef = useRef<(target: string | null) => void>(() => {});
   const controls  = useRef<ComponentRef<typeof BlenderControls>>(null);
   const topFileInputRef = useRef<HTMLInputElement>(null);
@@ -604,6 +595,16 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadE
     desc: string;
     shortcut?: string;
   } | null>(null);
+
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  useEffect(() => {
+    if (activeView === 'playground' || !activeTooltip || toolsDrawerOpen) return;
+    const onPointerMove = (e: PointerEvent) => {
+      setMousePos({ x: e.clientX, y: e.clientY });
+    };
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    return () => window.removeEventListener('pointermove', onPointerMove);
+  }, [activeView, activeTooltip, toolsDrawerOpen]);
 
   const tooltipProps = (title: string, desc: string, shortcut?: string) => ({
     onMouseEnter: () => setActiveTooltip({ title, desc, shortcut }),
