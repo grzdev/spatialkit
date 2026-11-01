@@ -1243,8 +1243,8 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadE
           )}
 
           <Canvas
-            dpr={typeof window !== 'undefined' ? Math.min(1.5, window.devicePixelRatio || 1) : 1}
-            performance={{ min: 0.65 }}
+            dpr={typeof window !== 'undefined' ? Math.min(1.25, window.devicePixelRatio || 1) : 1}
+            performance={{ min: 0.5 }}
             camera={{ position: [3.55, 2.05, 3.70], fov: 40 }}
             gl={{ localClippingEnabled: true, preserveDrawingBuffer: true, powerPreference: 'high-performance' }}
             onPointerMissed={() => { if (!placingHotspot && !tourActive) selectPart(null); }}

@@ -47,18 +47,29 @@ function SceneBridge({
 }) {
   const { parts, select, selectedPart } = useSpatial();
   const prevPartsLengthRef = useRef(-1);
+  const onSelectedPartChangeRef = useRef(onSelectedPartChange);
+  onSelectedPartChangeRef.current = onSelectedPartChange;
+
   useEffect(() => {
     if (parts.length !== prevPartsLengthRef.current) {
       prevPartsLengthRef.current = parts.length;
       onParts(parts);
     }
   }, [parts, onParts]);
+
   useEffect(() => {
     selectRef.current = select;
   }, [select, selectRef]);
+
+  const prevSelectedPartIdRef = useRef<string | null>(null);
   useEffect(() => {
-    onSelectedPartChange?.(selectedPart?.id ?? null);
-  }, [selectedPart, onSelectedPartChange]);
+    const curId = selectedPart?.id ?? null;
+    if (curId !== prevSelectedPartIdRef.current) {
+      prevSelectedPartIdRef.current = curId;
+      onSelectedPartChangeRef.current?.(curId);
+    }
+  }, [selectedPart]);
+
   return null;
 }
 
@@ -1441,8 +1452,8 @@ export function Playground({
 
       {/* ─── 3D Canvas with Responsive Camera Framing for Mobile & Desktop ─── */}
       <Canvas
-        dpr={typeof window !== 'undefined' ? Math.min(1.5, window.devicePixelRatio || 1) : 1}
-        performance={{ min: 0.65 }}
+        dpr={typeof window !== 'undefined' ? Math.min(1.25, window.devicePixelRatio || 1) : 1}
+        performance={{ min: 0.5 }}
         camera={{ position: [3.55, 2.05, 3.70], fov: 40 }}
         gl={{
           localClippingEnabled: true,
