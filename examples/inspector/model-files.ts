@@ -160,6 +160,14 @@ export async function prepareModel(
       await new Promise((r) => setTimeout(r, 16));
     }
     modelFit(gltf.scene, MODEL_FIT);
+    gltf.scene.traverse((child) => {
+      if ((child as Mesh).isMesh) {
+        const mesh = child as Mesh;
+        if (mesh.geometry && !mesh.geometry.boundingSphere) {
+          mesh.geometry.computeBoundingSphere();
+        }
+      }
+    });
     // Reject duplicate explicit IDs before replacing the current working model.
     const instance = createModelInstance(gltf.scene, id);
     const count = instance.records.length;

@@ -69,7 +69,6 @@ export function SelectableObject({
   const instance = useMemo(() => createModelInstance(object, modelId), [object, modelId]);
   const framing = useMemo(() => fit === undefined ? { scale: 1, position: [0, 0, 0] as [number, number, number] } : modelFit(object, fit), [object, fit]);
   const { register, select, selectedPart } = useSpatialContext();
-  const [hovered, setHovered] = useState<string | null>(null);
   useEffect(() => register(modelId, instance.records), [register, modelId, instance]);
   useEffect(() => () => instance.dispose(), [instance]);
 
@@ -136,28 +135,28 @@ export function SelectableObject({
     animationState.mixer.uncacheRoot(instance.root);
   }, [animationState, instance]);
   useEffect(() => {
+    if (!selectedPart) return;
     const restore: Array<() => void> = [];
     for (const { object, part } of instance.records) {
-      const active = selectedPart?.id === part.id;
-      if (!active && hovered !== part.id) continue;
+      if (selectedPart.id !== part.id) continue;
       for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
         const surface = material as MeshStandardMaterial;
         if (surface.emissive) {
           const original = surface.emissive.clone();
           const intensity = surface.emissiveIntensity;
           surface.emissive.set(highlightColor);
-          surface.emissiveIntensity = active ? 0.45 : 0.16;
+          surface.emissiveIntensity = 0.45;
           restore.push(() => { surface.emissive.copy(original); surface.emissiveIntensity = intensity; });
         } else if ('color' in material && material.color instanceof Color) {
           const color = material.color;
           const original = color.clone();
-          color.lerp(new Color(highlightColor), active ? 0.5 : 0.2);
+          color.lerp(new Color(highlightColor), 0.5);
           restore.push(() => color.copy(original));
         }
       }
     }
     return () => restore.forEach((reset) => reset());
-  }, [instance, selectedPart, hovered, highlightColor]);
+  }, [instance, selectedPart, highlightColor]);
 
   // Apply clipping planes to instance materials with full cleanup on toggle
   useEffect(() => {
@@ -179,20 +178,9 @@ export function SelectableObject({
     };
   }, [instance, clippingPlanes]);
 
-  const hitId = (event: ThreeEvent<PointerEvent | MouseEvent>) => instance.records.find((record) => record.object === event.object)?.part.id;
   return <group position={position} rotation={rotation} scale={scale}>
     <group scale={framing.scale} position={framing.position}>
     <primitive object={instance.root} dispose={null}
-      onPointerOver={(event: ThreeEvent<PointerEvent>) => {
-        if (event.buttons > 0) return; // Do not raycast/hover while dragging or orbiting!
-        event.stopPropagation();
-        const id = hitId(event);
-        if (id) setHovered((prev) => (prev === id ? prev : id));
-      }}
-      onPointerOut={(event: ThreeEvent<PointerEvent>) => {
-        if (event.buttons > 0) return;
-        setHovered((prev) => (prev === null ? prev : null));
-      }}
       onClick={(event: ThreeEvent<MouseEvent>) => {
         if (event.delta > 7) return;
         event.stopPropagation();

@@ -54,6 +54,10 @@ export function createModelInstance(source: Object3D, modelId: string) {
       if (!node.userData._skOriginalPosition) {
         node.userData._skOriginalPosition = node.position.clone();
       }
+      // Ensure bounding sphere is precomputed for fast raycast culling
+      if (node.geometry && !node.geometry.boundingSphere) {
+        node.geometry.computeBoundingSphere();
+      }
       records.push({ object: node, part: { id, modelId, name: node.name || key, metadata: { ...node.userData } } });
       node.userData._skPartId = id;
     }

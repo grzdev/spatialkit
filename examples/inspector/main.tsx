@@ -395,8 +395,20 @@ export function InteractiveModelRig({
         pistonRef.current.scale.set(1, Math.max(0.01, curY - 0.08), 1);
       }
     } else {
-      levitationRef.current.position.set(0, 0, 0);
-      levitationRef.current.rotation.set(0, 0, 0);
+      if (
+        levitationRef.current.position.x !== 0 ||
+        levitationRef.current.position.y !== 0 ||
+        levitationRef.current.position.z !== 0
+      ) {
+        levitationRef.current.position.set(0, 0, 0);
+      }
+      if (
+        levitationRef.current.rotation.x !== 0 ||
+        levitationRef.current.rotation.y !== 0 ||
+        levitationRef.current.rotation.z !== 0
+      ) {
+        levitationRef.current.rotation.set(0, 0, 0);
+      }
     }
   });
 
@@ -1231,9 +1243,10 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadE
           )}
 
           <Canvas
-            dpr={[1, 2]}
+            dpr={typeof window !== 'undefined' ? Math.min(1.5, window.devicePixelRatio || 1) : 1}
+            performance={{ min: 0.65 }}
             camera={{ position: [3.55, 2.05, 3.70], fov: 40 }}
-            gl={{ localClippingEnabled: true, preserveDrawingBuffer: true }}
+            gl={{ localClippingEnabled: true, preserveDrawingBuffer: true, powerPreference: 'high-performance' }}
             onPointerMissed={() => { if (!placingHotspot && !tourActive) selectPart(null); }}
             fallback={
               <div className="scene-message">
