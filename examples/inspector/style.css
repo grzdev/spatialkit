@@ -4106,6 +4106,8 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   overflow-y: auto;
 }
 .assembly-part-item {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 28px;
   display: flex;
   align-items: center;
   gap: 6px;

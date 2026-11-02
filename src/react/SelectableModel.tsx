@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLoader, type ThreeEvent } from '@react-three/fiber';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { AnimationMixer, Box3, Color, LoopOnce, Plane, Vector3, type AnimationClip, type MeshStandardMaterial, type Object3D } from 'three';
+import { AnimationMixer, Box3, Color, LoopOnce, Mesh, Plane, Vector3, type AnimationClip, type MeshStandardMaterial, type Object3D } from 'three';
 import { createModelInstance, modelFit, type SpatialPart } from './model';
 import { useSpatialContext } from './SpatialProvider';
 
@@ -79,37 +79,52 @@ export function SelectableObject({
     return box.getCenter(new Vector3());
   }, [instance]);
 
-  // Procedural Exploded View effect
-  useEffect(() => {
-    const clampedExplode = Math.max(0, explode);
+  // Precompute explode directions once per instance
+  const explodeVectors = useMemo(() => {
+    const vectors = new Map<Mesh, Vector3>();
     const meshBox = new Box3();
     const meshCenter = new Vector3();
-    const explodeDir = new Vector3();
 
     for (const record of instance.records) {
       const mesh = record.object;
       const basePos = mesh.userData._skOriginalPosition as Vector3 | undefined;
       if (!basePos) continue;
 
-      if (clampedExplode === 0) {
-        mesh.position.copy(basePos);
+      if (mesh.userData._skLocalCenter) {
+        meshCenter.copy(mesh.userData._skLocalCenter as Vector3);
+        mesh.localToWorld(meshCenter);
       } else {
         meshBox.setFromObject(mesh);
         meshBox.getCenter(meshCenter);
-        explodeDir.subVectors(meshCenter, modelCenter);
+      }
 
-        // If mesh is centered exactly at origin, bias along Y or X
-        if (explodeDir.lengthSq() < 0.0001) {
-          explodeDir.set(0, 1, 0);
-        } else {
-          explodeDir.normalize();
-        }
+      const explodeDir = new Vector3().subVectors(meshCenter, modelCenter);
+      if (explodeDir.lengthSq() < 0.0001) {
+        explodeDir.set(0, 1, 0);
+      } else {
+        explodeDir.normalize();
+      }
+      vectors.set(mesh, explodeDir);
+    }
+    return vectors;
+  }, [instance, modelCenter]);
 
-        // Translate outwards proportional to explode parameter
+  // Procedural Exploded View effect - pure O(1) vector translation per mesh
+  useEffect(() => {
+    const clampedExplode = Math.max(0, explode);
+    for (const record of instance.records) {
+      const mesh = record.object;
+      const basePos = mesh.userData._skOriginalPosition as Vector3 | undefined;
+      const explodeDir = explodeVectors.get(mesh);
+      if (!basePos || !explodeDir) continue;
+
+      if (clampedExplode === 0) {
+        mesh.position.copy(basePos);
+      } else {
         mesh.position.copy(basePos).addScaledVector(explodeDir, clampedExplode * 1.5);
       }
     }
-  }, [instance, explode, modelCenter]);
+  }, [instance, explode, explodeVectors]);
 
   const animationState = useMemo(() => {
     if (animationProgress === undefined) return null;
@@ -139,20 +154,41 @@ export function SelectableObject({
     const restore: Array<() => void> = [];
     for (const { object, part } of instance.records) {
       if (selectedPart.id !== part.id) continue;
-      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+      const originalMaterial = object.material;
+      const mats = Array.isArray(originalMaterial) ? originalMaterial : [originalMaterial];
+      const isShared = instance.records.some(
+        (r) => r.object !== object && (Array.isArray(r.object.material) ? r.object.material.some((m) => mats.includes(m)) : mats.includes(r.object.material))
+      );
+
+      const targetMats = isShared ? mats.map((m) => m.clone()) : mats;
+      if (isShared) {
+        object.material = Array.isArray(originalMaterial) ? targetMats : targetMats[0];
+      }
+
+      for (const material of targetMats) {
         const surface = material as MeshStandardMaterial;
         if (surface.emissive) {
           const original = surface.emissive.clone();
           const intensity = surface.emissiveIntensity;
           surface.emissive.set(highlightColor);
           surface.emissiveIntensity = 0.45;
-          restore.push(() => { surface.emissive.copy(original); surface.emissiveIntensity = intensity; });
+          restore.push(() => {
+            surface.emissive.copy(original);
+            surface.emissiveIntensity = intensity;
+          });
         } else if ('color' in material && material.color instanceof Color) {
           const color = material.color;
           const original = color.clone();
           color.lerp(new Color(highlightColor), 0.5);
           restore.push(() => color.copy(original));
         }
+      }
+
+      if (isShared) {
+        restore.push(() => {
+          object.material = originalMaterial;
+          targetMats.forEach((m) => m.dispose());
+        });
       }
     }
     return () => restore.forEach((reset) => reset());

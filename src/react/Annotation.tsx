@@ -50,6 +50,7 @@ export function Annotation({
   const labelGroup = useRef<Group>(null);
   const lineMesh = useRef<Line>(null);
   const anchorWorld = useRef(new Vector3());
+  const anchorLocal = useRef(new Vector3());
   const labelWorld = useRef(new Vector3());
 
   const showPin = pin ?? (localPoint !== undefined);
@@ -73,9 +74,9 @@ export function Annotation({
     const parent = group.current.parent;
     if (parent) {
       parent.updateWorldMatrix(true, false);
-      const anchorLocal = anchorWorld.current.clone();
-      parent.worldToLocal(anchorLocal);
-      group.current.position.copy(anchorLocal);
+      anchorLocal.current.copy(anchorWorld.current);
+      parent.worldToLocal(anchorLocal.current);
+      group.current.position.copy(anchorLocal.current);
 
       if (labelGroup.current) {
         labelGroup.current.position.set(offset[0], offset[1], offset[2]);

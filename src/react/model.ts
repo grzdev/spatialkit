@@ -35,6 +35,16 @@ export function createModelInstance(source: Object3D, modelId: string) {
     if (node instanceof Mesh && node.name) names.set(node.name, (names.get(node.name) ?? 0) + 1);
   });
   const ids = new Set<string>();
+  const materialMap = new Map<Material, Material>();
+  const copy = (material: Material) => {
+    let cloned = materialMap.get(material);
+    if (!cloned) {
+      cloned = material.clone();
+      materialMap.set(material, cloned);
+      materials.push(cloned);
+    }
+    return cloned;
+  };
   const visit = (node: Object3D, path: string) => {
     if (node instanceof Mesh) {
       const explicit = node.userData.spatialId;
@@ -44,19 +54,22 @@ export function createModelInstance(source: Object3D, modelId: string) {
       const id = `${modelId}/${key}`;
       if (ids.has(id)) throw new Error(`[SpatialKit] Duplicate part id "${id}". Set unique node extras.spatialId values.`);
       ids.add(id);
-      const copy = (material: Material) => {
-        const cloned = material.clone();
-        materials.push(cloned);
-        return cloned;
-      };
       node.material = Array.isArray(node.material) ? node.material.map(copy) : copy(node.material);
       // Preserve baseline position for procedural exploded views
       if (!node.userData._skOriginalPosition) {
         node.userData._skOriginalPosition = node.position.clone();
       }
-      // Ensure bounding sphere is precomputed for fast raycast culling
-      if (node.geometry && !node.geometry.boundingSphere) {
-        node.geometry.computeBoundingSphere();
+      // Ensure bounding sphere and box are precomputed for fast raycast culling and O(1) centers
+      if (node.geometry) {
+        if (!node.geometry.boundingSphere) {
+          node.geometry.computeBoundingSphere();
+        }
+        if (!node.geometry.boundingBox) {
+          node.geometry.computeBoundingBox();
+        }
+        if (node.geometry.boundingBox && !node.userData._skLocalCenter) {
+          node.userData._skLocalCenter = node.geometry.boundingBox.getCenter(new Vector3());
+        }
       }
       records.push({ object: node, part: { id, modelId, name: node.name || key, metadata: { ...node.userData } } });
       node.userData._skPartId = id;
@@ -79,6 +92,20 @@ export function resolvePart(records: readonly PartRecord[], target: string, mode
 const bounds = new Box3();
 /** Compute an attachment point after all ancestor transforms, including model scaling. */
 export function partCenter(object: Object3D, out = new Vector3()): Vector3 {
-  object.updateWorldMatrix(true, true);
+  object.updateWorldMatrix(true, false);
+  const mesh = object as Mesh;
+  if (mesh.userData?._skLocalCenter) {
+    out.copy(mesh.userData._skLocalCenter as Vector3);
+    return object.localToWorld(out);
+  }
+  if (mesh.geometry) {
+    if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+    if (mesh.geometry.boundingBox) {
+      const center = mesh.geometry.boundingBox.getCenter(new Vector3());
+      mesh.userData._skLocalCenter = center;
+      out.copy(center);
+      return object.localToWorld(out);
+    }
+  }
   return bounds.setFromObject(object).getCenter(out);
 }

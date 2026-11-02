@@ -1243,10 +1243,10 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadE
           )}
 
           <Canvas
-            dpr={typeof window !== 'undefined' ? Math.min(1.25, window.devicePixelRatio || 1) : 1}
-            performance={{ min: 0.5 }}
+            dpr={typeof window !== 'undefined' ? Math.min(1.0, window.devicePixelRatio || 1) : 1}
+            performance={{ min: 0.7 }}
             camera={{ position: [3.55, 2.05, 3.70], fov: 40 }}
-            gl={{ localClippingEnabled: true, preserveDrawingBuffer: true, powerPreference: 'high-performance' }}
+            gl={{ localClippingEnabled: true, powerPreference: 'high-performance' }}
             onPointerMissed={() => { if (!placingHotspot && !tourActive) selectPart(null); }}
             fallback={
               <div className="scene-message">

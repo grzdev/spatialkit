@@ -7,7 +7,7 @@ import {
   type ComponentRef,
 } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { ContactShadows, Html } from '@react-three/drei';
+import { AdaptiveDpr, ContactShadows, Html } from '@react-three/drei';
 import { Box3, Mesh, Plane, Vector3 } from 'three';
 import {
   Annotation,
@@ -35,6 +35,18 @@ import {
   TactileDial,
   TactileJoystick,
 } from './ControlsLab';
+
+function CanvasCaptureBridge({ captureRef }: { captureRef: React.MutableRefObject<(() => string | null) | null> }) {
+  const { gl, scene, camera } = useThree();
+  useEffect(() => {
+    captureRef.current = () => {
+      gl.render(scene, camera);
+      return gl.domElement.toDataURL('image/png');
+    };
+    return () => { captureRef.current = null; };
+  }, [gl, scene, camera, captureRef]);
+  return null;
+}
 
 function SceneBridge({
   onParts,
@@ -601,7 +613,6 @@ export function Playground({
       setIsMobile((prev) => {
         if (prev !== mobile) {
           setConsoleMinimized(mobile);
-          setTourPanelMinimized(mobile);
         }
         return mobile;
       });
@@ -644,7 +655,8 @@ export function Playground({
   const [assemblyFilter, setAssemblyFilter] = useState('');
   const [tourPanelOpen, setTourPanelOpen] = useState(true);
   // Hotspots panel: start OPENED (false) on desktop/laptop screens (> 640px), collapsed ONLY on mobile phones (<= 640px)
-  const [tourPanelMinimized, setTourPanelMinimized] = useState(() => isPhoneViewport());
+  // Hotspots panel: collapsed on startup for ALL screens (opens smoothly when user clicks any mesh part)
+  const [tourPanelMinimized, setTourPanelMinimized] = useState(true);
   const [showPlacementHint, setShowPlacementHint] = useState(true);
 
   // Auto-dismiss placement hint banner after 10 seconds
@@ -662,7 +674,7 @@ export function Playground({
     setPendingTarget(null);
     setDraftLabel('');
     setTourActive(false);
-    setTourPanelMinimized(isPhoneViewport());
+    setTourPanelMinimized(true);
     setFocusRequest(null);
     if (propNotes === undefined) {
       setInternalNotes(loadNotesFromStorage(model.id));
@@ -878,8 +890,8 @@ export function Playground({
       setHighlightedNoteId(null);
       setTourActive(false);
     } else {
-      // Hotspots panel: on mobile phones start collapsed, on laptop/desktop start OPENED!
-      setTourPanelMinimized(isPhoneViewport());
+      // Hotspots panel: starts collapsed on all screens until a mesh part is clicked
+      setTourPanelMinimized(true);
     }
   }
 
@@ -939,13 +951,16 @@ export function Playground({
   // Target missile lock status derived directly from camera turret angular aim
   const isTargetLocked = gimbalHUD.isLocked;
 
+  const canvasCaptureRef = useRef<(() => string | null) | null>(null);
+
   function captureStudioSnapshot() {
     const canvas = viewportRef.current?.querySelector('canvas');
     if (!canvas) return;
     try {
       setShutterFlash(true);
       setTimeout(() => setShutterFlash(false), 260);
-      const url = canvas.toDataURL('image/png');
+      const captured = canvasCaptureRef.current ? canvasCaptureRef.current() : null;
+      const url = captured || canvas.toDataURL('image/png');
       const filename = `${publicFilename(model.name)}-studio-snapshot.png`;
       setSnapshotPreview({ url, filename });
     } catch {
@@ -1457,7 +1472,7 @@ export function Playground({
         camera={{ position: [3.55, 2.05, 3.70], fov: 40 }}
         gl={{
           localClippingEnabled: true,
-          preserveDrawingBuffer: true,
+          // preserveDrawingBuffer removed for 3x hardware page-flipping fillrate
           powerPreference: 'high-performance',
         }}
         onPointerMissed={() => {
@@ -1576,6 +1591,9 @@ export function Playground({
         {showGrid && !isSpotlightMode && env.showGrid && (
           <gridHelper args={[20, 40, gridPrimary, gridSecondary]} position={[0, mobileModelYOffset - 0.025, 0]} />
         )}
+
+        <AdaptiveDpr />
+        <CanvasCaptureBridge captureRef={canvasCaptureRef} />
 
         <BlenderControls
           ref={controlsRef}
