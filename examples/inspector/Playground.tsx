@@ -10,7 +10,6 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { AdaptiveDpr, ContactShadows, Html } from '@react-three/drei';
 import { Box3, BufferAttribute, BufferGeometry, Mesh, Plane, Vector3 } from 'three';
 import {
-  Annotation,
   BlenderControls,
   SelectableModel,
   SelectableObject,
@@ -31,7 +30,7 @@ import {
 } from './main';
 import { MAX_MODEL_MB, MODEL_FIT, downloadModelFromSource, type ModelAsset, type ModelUploadProgress } from './model-files';
 import { generateComponent, publicFilename } from './integration';
-import { INITIAL_NOTES, parseNotes, notesKey, annotationOffset, loadNotesFromStorage, type Note } from './notes';
+import { type Note } from './notes';
 import {
   HorizontalMechanicalLever,
   TactileDial,
@@ -221,16 +220,6 @@ function SpatialDimensionCage({
         </div>
       </Html>
     </group>
-  );
-}
-
-export function IconInspector() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="11" cy="11" r="8" />
-      <line x1="21" y1="21" x2="16.65" y2="16.65" />
-      <circle cx="11" cy="11" r="3" />
-    </svg>
   );
 }
 
@@ -731,13 +720,13 @@ export function Playground({
   const controlsRef = useRef<ComponentRef<typeof BlenderControls>>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const noteFileInputRef = useRef<HTMLInputElement>(null);
+  void onNotesChange;
 
   // Mobile screen detection for responsive camera framing, layout & initial collapse state
   const [isMobile, setIsMobile] = useState(() => isPhoneViewport());
 
-  // Active Tool Selection & Responsive Sidebar: Default to 'inspect'!
-  const [activeTool, setActiveTool] = useState<string | null>('inspect');
+  // Active Tool Selection & Responsive Sidebar: Default to 'material' (Material & Surface Lab)
+  const [activeTool, setActiveTool] = useState<string | null>('material');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Control rigs & panels: start OPENED (false) on desktop/laptop screens (> 640px), collapsed ONLY on mobile phones (<= 640px)
   const [consoleMinimized, setConsoleMinimized] = useState(() => isPhoneViewport());
@@ -756,60 +745,18 @@ export function Playground({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // ─── 3D Inspector, Hotspot & Guided Tour State ──────────────────────────────
-  const storageKey = notesKey(model.id);
-  const [internalNotes, setInternalNotes] = useState<Note[]>(() => {
-    if (propNotes !== undefined) {
-      return propNotes.filter((n) => n.id !== 'starter-note' && !/inspect.*seal/i.test(n.label));
-    }
-    return loadNotesFromStorage(model.id);
-  });
-
-  const rawNotes = propNotes ?? internalNotes;
-  const notes = rawNotes.filter((n) => n.id !== 'starter-note' && !/inspect.*seal/i.test(n.label));
-  const setNotes = (updater: Note[] | ((prev: Note[]) => Note[])) => {
-    setInternalNotes((prev) => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(next));
-      } catch {}
-      onNotesChange?.(next);
-      return next;
-    });
-  };
-
   const [parts, setParts] = useState<SpatialPart[]>([]);
   const selectRef = useRef<(target: string | null) => void>(() => {});
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
-  const [highlightedNoteId, setHighlightedNoteId] = useState<string | null>(null);
-  const [pendingPoint, setPendingPoint] = useState<[number, number, number] | null>(null);
-  const [pendingWorldBeacon, setPendingWorldBeacon] = useState<[number, number, number] | null>(null);
-  const [pendingTarget, setPendingTarget] = useState<string | null>(null);
-  const [draftLabel, setDraftLabel] = useState('');
-  const [showAssembly, setShowAssembly] = useState(false);
-  const [assemblyFilter, setAssemblyFilter] = useState('');
-  const [tourPanelOpen, setTourPanelOpen] = useState(true);
-  // Hotspots panel: start OPENED (false) on desktop/laptop screens (> 640px), collapsed ONLY on mobile phones (<= 640px)
-  // Hotspots panel: collapsed on startup for ALL screens (opens smoothly when user clicks any mesh part)
-  const [tourPanelMinimized, setTourPanelMinimized] = useState(true);
-  const [showPlacementHint, setShowPlacementHint] = useState(true);
+  const [focusRequest, setFocusRequest] = useState<CameraFocusRequest | null>(null);
 
-  // Auto-dismiss placement hint banner after 10 seconds
-  useEffect(() => {
-    const timer = setTimeout(() => setShowPlacementHint(false), 10000);
-    return () => clearTimeout(timer);
-  }, []);
+  function triggerCameraFocus(partId: string, point?: [number, number, number]) {
+    setFocusRequest({ partId, point, nonce: Date.now() + Math.random() });
+  }
 
   // Reset model-specific selection & physics when switching models without changing activeTool
   useEffect(() => {
     setSelectedPartId(null);
-    setHighlightedNoteId(null);
-    setPendingPoint(null);
-    setPendingWorldBeacon(null);
-    setPendingTarget(null);
-    setDraftLabel('');
-    setTourActive(false);
-    setTourPanelMinimized(true);
     setFocusRequest(null);
     setAutoExplodePulse(false);
     setProceduralExplode(0);
@@ -821,12 +768,9 @@ export function Playground({
     setScaleMultiplier(1.0);
     setZeroGEnabled(false);
     setManualAltitude(0);
-    if (propNotes === undefined) {
-      setInternalNotes(loadNotesFromStorage(model.id));
-    }
   }, [model.id]);
 
-  const isMobileElevationTool = isMobile && Boolean(activeTool) && activeTool !== 'inspect';
+  const isMobileElevationTool = isMobile && Boolean(activeTool);
   const mobileModelYOffset = isMobileElevationTool ? 1.05 : 0;
 
   // Material & Surface Lab State ('material')
@@ -866,113 +810,6 @@ export function Playground({
   const [autoExplodePulse, setAutoExplodePulse] = useState(false);
   const [downloadingModel, setDownloadingModel] = useState(false);
 
-  // Guided Feature Tour State
-  const [tourActive, setTourActive] = useState(false);
-  const [tourIndex, setTourIndex] = useState(0);
-  const [tourPaused, setTourPaused] = useState(false);
-  const [focusRequest, setFocusRequest] = useState<CameraFocusRequest | null>(null);
-
-  function triggerCameraFocus(partId: string, point?: [number, number, number]) {
-    setFocusRequest({ partId, point, nonce: Date.now() + Math.random() });
-  }
-
-  const tourStops = useMemo(() => {
-    if (notes.length === 0) return [];
-    return notes.map((note) => {
-      const part = parts.find((p) => p.id === note.target || p.name === note.target);
-      return {
-        id: note.id,
-        partId: part?.id ?? note.target,
-        partTitle: part ? String(part.metadata?.label ?? part.name) : note.target.replace(/^[^/]+\//, ''),
-        caption: note.label,
-        point: note.point,
-      };
-    });
-  }, [notes, parts]);
-
-  // Stop tour if notes drop below 2
-  useEffect(() => {
-    if (tourActive && tourStops.length < 2) {
-      setTourActive(false);
-    }
-  }, [tourActive, tourStops.length]);
-
-  // Tour step focus
-  useEffect(() => {
-    if (!tourActive || !tourStops.length) return;
-    const safeIndex = tourIndex % tourStops.length;
-    const stop = tourStops[safeIndex];
-    if (stop) {
-      selectRef.current(stop.partId);
-      setSelectedPartId(stop.partId);
-      setHighlightedNoteId(stop.id);
-      triggerCameraFocus(stop.partId, stop.point);
-    }
-  }, [tourActive, tourIndex, tourStops]);
-
-  // Tour timer (3.2 seconds brisk rhythm per stop)
-  useEffect(() => {
-    if (!tourActive || tourPaused || tourStops.length <= 1) return;
-    const timer = setInterval(() => {
-      setTourIndex((prev) => (prev + 1) % tourStops.length);
-    }, 3200);
-    return () => clearInterval(timer);
-  }, [tourActive, tourPaused, tourStops.length]);
-
-  function handleSaveHotspot() {
-    if (!draftLabel.trim() || !pendingTarget) return;
-    const newNote: Note = {
-      id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      target: pendingTarget,
-      label: draftLabel.trim(),
-      point: pendingPoint ? [pendingPoint[0], pendingPoint[1], pendingPoint[2]] : undefined,
-    };
-    setNotes((prev) => [...prev, newNote]);
-    setDraftLabel('');
-    setPendingPoint(null);
-    setPendingWorldBeacon(null);
-    setPendingTarget(null);
-    setShowPlacementHint(false);
-  }
-
-  function handleDeleteNote(noteId: string) {
-    setNotes((prev) => prev.filter((n) => n.id !== noteId));
-  }
-
-  function handleExportNotes() {
-    const jsonStr = JSON.stringify(notes, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${publicFilename(model.name)}-notes.json`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
-  async function handleImportNotes(file: File) {
-    try {
-      const text = await file.text();
-      const imported = parseNotes(text, model.id);
-      if (!imported.length) return;
-      setNotes((existing) => {
-        const existingIds = new Set(existing.map((n) => n.id));
-        const merged = [...existing];
-        for (const note of imported) {
-          if (!existingIds.has(note.id)) {
-            merged.push(note);
-            existingIds.add(note.id);
-          }
-        }
-        return merged;
-      });
-      setSnapshotToast(`Imported ${imported.length} hotspot${imported.length === 1 ? '' : 's'}`);
-      setTimeout(() => setSnapshotToast(null), 2500);
-    } catch (err) {
-      console.error('Failed to import notes:', err);
-    }
-  }
-
   async function handleDownloadModel() {
     if (downloadingModel) return;
     setDownloadingModel(true);
@@ -1003,7 +840,7 @@ export function Playground({
     if (onOpenGuide) {
       onOpenGuide();
     } else {
-      const snippet = generateComponent(model, notes);
+      const snippet = generateComponent(model, propNotes ?? []);
       navigator.clipboard.writeText(snippet);
       setSnapshotToast('React component code copied to clipboard!');
       setTimeout(() => setSnapshotToast(null), 2500);
@@ -1075,35 +912,24 @@ export function Playground({
   const [sectionAxis, setSectionAxis] = useState<'x' | 'y' | 'z'>('z');
   const [sectionOffset, setSectionOffset] = useState(1.0);
 
-  // Tool Selection with immediate single-tap activation (no double-click toggle bugs)
+  // Tool Selection with immediate single-tap activation
   function selectTool(toolName: string) {
     if (activeTool === toolName) {
-      // Tapping active dock item toggles controls collapsed / expanded
       setConsoleMinimized((m) => !m);
       return;
     }
     if (toolName !== 'explode') {
       setAutoExplodePulse(false);
-    }
-    setActiveTool(toolName);
-    // Control rigs: on mobile phones start collapsed, on laptop/desktop start OPENED!
-    setConsoleMinimized(isPhoneViewport());
-    setCrossSectionEnabled(toolName === 'slicer');
-    if (toolName === 'explode' && proceduralExplode === 0) {
-      setProceduralExplode(0.35);
-    }
-    if (toolName !== 'inspect') {
-      setPendingPoint(null);
-      setPendingTarget(null);
-      setHighlightedNoteId(null);
-      setTourActive(false);
       if (selectedPartId) {
         setSelectedPartId(null);
         selectRef.current(null);
       }
-    } else {
-      // Hotspots panel: starts collapsed on all screens until a mesh part is clicked
-      setTourPanelMinimized(true);
+    }
+    setActiveTool(toolName);
+    setConsoleMinimized(false);
+    setCrossSectionEnabled(toolName === 'slicer');
+    if (toolName === 'explode' && proceduralExplode === 0) {
+      setProceduralExplode(0.35);
     }
   }
 
@@ -1205,10 +1031,6 @@ export function Playground({
         if (selectedPartId) {
           setSelectedPartId(null);
           selectRef.current(null);
-          setHighlightedNoteId(null);
-          setPendingPoint(null);
-          setPendingWorldBeacon(null);
-          setPendingTarget(null);
           return;
         }
         if (sidebarOpen) {
@@ -1216,9 +1038,6 @@ export function Playground({
           return;
         }
         setActiveTool(null);
-        setPendingPoint(null);
-        setPendingTarget(null);
-        setTourActive(false);
         setCrossSectionEnabled(false);
       }
     };
@@ -1226,63 +1045,14 @@ export function Playground({
     return () => window.removeEventListener('keydown', onKey);
   }, [sidebarOpen, snapshotPreview, selectedPartId]);
 
-  // Surface click for 3D hotspots in inspector mode
   function handleSurfaceClick(hit: SurfaceHit) {
-    if (activeTool === 'inspect') {
-      const partId = hit.part.id;
-
-      // Automatically open the hotspots tab with ease when any part is clicked
-      setTourPanelOpen(true);
-      setTourPanelMinimized(false);
-
-      if (selectedPartId === partId) {
-        // Deselect currently selected part if clicked again
-        setSelectedPartId(null);
-        selectRef.current(null);
-        setHighlightedNoteId(null);
-        setPendingPoint(null);
-        setPendingWorldBeacon(null);
-        setPendingTarget(null);
-        return;
-      }
+    const partId = hit.part.id;
+    if (selectedPartId === partId) {
+      setSelectedPartId(null);
+      selectRef.current(null);
+    } else {
       setSelectedPartId(partId);
       selectRef.current(partId);
-
-      if (isMobile) {
-        // Pure model exploration on mobile: no pending hotspot prompt or beacon
-        setPendingPoint(null);
-        setPendingWorldBeacon(null);
-        setPendingTarget(null);
-        return;
-      }
-
-      // Check if clicked part already has a hotspot
-      const match = notes.find((n) => n.target === partId);
-      if (match) {
-        setHighlightedNoteId(match.id);
-        setPendingPoint(null);
-        setPendingWorldBeacon(null);
-        setPendingTarget(null);
-      } else {
-        // Mesh-local coordinates for Annotation pinning (dead accurate, immune to drift)
-        const localPos = hit.point.slice() as [number, number, number];
-        // World coordinates for temporary 3D beacon cursor
-        const worldPos = (hit.worldPoint ?? hit.point).slice() as [number, number, number];
-        setPendingPoint(localPos);
-        setPendingWorldBeacon(worldPos);
-        setPendingTarget(partId);
-        setHighlightedNoteId(null);
-      }
-      setConsoleMinimized(false);
-    } else if (activeTool === 'explode') {
-      const partId = hit.part.id;
-      if (selectedPartId === partId) {
-        setSelectedPartId(null);
-        selectRef.current(null);
-      } else {
-        setSelectedPartId(partId);
-        selectRef.current(partId);
-      }
     }
   }
 
@@ -1301,17 +1071,6 @@ export function Playground({
             const file = e.target.files?.[0];
             e.target.value = '';
             if (file) onUpload(file);
-          }}
-        />
-        <input
-          ref={noteFileInputRef}
-          type="file"
-          accept=".json,application/json"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            e.target.value = '';
-            if (file) handleImportNotes(file);
           }}
         />
 
@@ -1530,27 +1289,6 @@ export function Playground({
         </div>
       )}
 
-      {/* Hotspot Placement Instruction Banner (Desktop only) */}
-      {activeTool === 'inspect' && !tourActive && !isMobile && showPlacementHint && (
-        <div
-          className="placement-banner"
-          role="status"
-          style={{
-            position: 'absolute',
-            top: 68,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 48,
-            pointerEvents: 'none',
-            margin: 0,
-          }}
-        >
-          {pendingPoint
-            ? '✦ Point targeted on surface · Enter label in console below'
-            : '✦ Click any part or surface of the 3D model to drop a hotspot'}
-        </div>
-      )}
-
       {/* ─── Tactical Gimbal HUD Overlay (Fighter-Jet Camera Turret & Missile Lock) ─── */}
       {activeModelControl === 'target' && (
         <div className="target-hud-overlay" aria-hidden="true">
@@ -1654,51 +1392,6 @@ export function Playground({
         </div>
       )}
 
-      {/* ─── Guided Feature Tour Top HUD (Auto-Cycling Callouts) ─── */}
-      {tourActive && tourStops.length > 0 && (
-        <div className="tour-hud-card" role="region" aria-label="Guided Tour">
-          <div className="tour-hud-top">
-            <span className="tour-step-badge">
-              TOUR {String((tourIndex % tourStops.length) + 1).padStart(2, '0')} / {String(tourStops.length).padStart(2, '0')}
-            </span>
-            <strong>{tourStops[tourIndex % tourStops.length]?.partTitle}</strong>
-            <div className="tour-hud-controls">
-              <button
-                type="button"
-                aria-label="Previous tour stop"
-                onClick={() => setTourIndex((i) => (i - 1 + tourStops.length) % tourStops.length)}
-              >
-                ‹
-              </button>
-              <button
-                type="button"
-                aria-label={tourPaused ? 'Resume tour' : 'Pause tour'}
-                onClick={() => setTourPaused((p) => !p)}
-              >
-                {tourPaused ? '▶' : '⏸'}
-              </button>
-              <button
-                type="button"
-                aria-label="Next tour stop"
-                onClick={() => setTourIndex((i) => (i + 1) % tourStops.length)}
-              >
-                ›
-              </button>
-              <button
-                type="button"
-                aria-label="Exit guided tour"
-                onClick={() => setTourActive(false)}
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-          <div className="tour-hud-caption">
-            {tourStops[tourIndex % tourStops.length]?.caption}
-          </div>
-        </div>
-      )}
-
       {/* ─── 3D Canvas with Responsive Camera Framing for Mobile & Desktop ─── */}
       <Canvas
         dpr={typeof window !== 'undefined' ? Math.min(1.25, window.devicePixelRatio || 1) : 1}
@@ -1713,10 +1406,6 @@ export function Playground({
           if (selectedPartId) {
             setSelectedPartId(null);
             selectRef.current(null);
-            setHighlightedNoteId(null);
-            setPendingPoint(null);
-            setPendingWorldBeacon(null);
-            setPendingTarget(null);
           }
         }}
       >
@@ -1800,34 +1489,8 @@ export function Playground({
                 selectRef={selectRef}
                 onSelectedPartChange={(partId) => {
                   setSelectedPartId(partId);
-                  if (!partId) {
-                    setHighlightedNoteId(null);
-                    setPendingPoint(null);
-                    setPendingWorldBeacon(null);
-                    setPendingTarget(null);
-                  }
                 }}
               />
-
-              {/* 3D Hotspot Annotations */}
-              {activeTool === 'inspect' && notes.map((note, i) => (
-                <Annotation
-                  key={note.id}
-                  target={note.target}
-                  label={note.label}
-                  point={note.point}
-                  offset={annotationOffset(notes, i)}
-                  className="model-annotation"
-                />
-              ))}
-
-              {/* Active Locator Beacon when surface point is targeted (Desktop only) */}
-              {activeTool === 'inspect' && !isMobile && pendingWorldBeacon && (
-                <mesh position={pendingWorldBeacon}>
-                  <sphereGeometry args={[0.045, 16, 16]} />
-                  <meshBasicMaterial color="#38bdf8" depthTest={false} />
-                </mesh>
-              )}
             </group>
           </SpatialProvider>
 
@@ -1890,229 +1553,11 @@ export function Playground({
         <ViewportDirector turntable={turntable} focusRequest={focusRequest} controlsRef={controlsRef} />
       </Canvas>
 
-      {/* ─── Left Stack: Hotspots & Tour Panel + Gradient Light-Black Upload Button ─── */}
+      {/* ─── Left Stack: Standalone Top-Left Gradient Light-Black Upload Button ─── */}
       <div className="playground-left-stack">
-        {activeTool === 'inspect' && tourPanelOpen && (
-          <aside
-            className={`inspector-tour-panel ${tourPanelMinimized ? 'minimized' : ''}`}
-            role="region"
-            aria-label="Hotspots and Guided Tour"
-          >
-            <div className="console-header">
-              <div
-                className="console-header-title"
-                onClick={() => setTourPanelMinimized((m) => !m)}
-                style={{ cursor: 'pointer', userSelect: 'none' }}
-                title={tourPanelMinimized ? 'Click to expand' : 'Click to collapse'}
-              >
-                <strong>✦ HOTSPOTS & TOUR</strong>
-                <span>{notes.length} STOPS · {parts.length} PARTS</span>
-              </div>
-              <div className="console-header-actions">
-                <button
-                  type="button"
-                  className="console-minimize-btn"
-                  onClick={() => setTourPanelMinimized((m) => !m)}
-                  title={tourPanelMinimized ? 'Expand panel' : 'Collapse panel'}
-                  aria-label={tourPanelMinimized ? 'Expand hotspots panel' : 'Collapse hotspots panel'}
-                >
-                  <IconChevronDown className={tourPanelMinimized ? '' : 'rotate-180'} />
-                </button>
-              </div>
-            </div>
-
-            {!tourPanelMinimized && (
-              <div className="tour-panel-body">
-                {/* Prominently highlight the currently clicked / selected part */}
-                {selectedPartId && (
-                  <div className="inspector-active-part-card">
-                    <div className="active-part-info">
-                      <span className="active-part-dot" />
-                      <span className="active-part-label">SELECTED PART:</span>
-                      <strong className="active-part-name" title={selectedPartId.replace(/^[^/]+\//, '')}>
-                        {selectedPartId.replace(/^[^/]+\//, '')}
-                      </strong>
-                    </div>
-                    <button
-                      type="button"
-                      className="active-part-clear-btn"
-                      onClick={() => {
-                        setSelectedPartId(null);
-                        selectRef.current(null);
-                        setHighlightedNoteId(null);
-                        setPendingPoint(null);
-                        setPendingWorldBeacon(null);
-                        setPendingTarget(null);
-                      }}
-                      title="Deselect part"
-                      aria-label="Deselect part"
-                    >
-                      ✕ Deselect
-                    </button>
-                  </div>
-                )}
-
-                {/* Hotspots list with active selection highlight */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
-                  <div className="inspector-section-label">
-                    <span>SAVED HOTSPOTS ({notes.length})</span>
-                  </div>
-
-                  {notes.length > 0 ? (
-                    <div className="inspector-notes-scroll">
-                      {notes.map((note) => {
-                        const isMatch = highlightedNoteId === note.id || selectedPartId === note.target;
-                        return (
-                          <div
-                            key={note.id}
-                            className={`inspector-note-card ${isMatch ? 'active-highlight' : ''}`}
-                            onClick={() => {
-                              if (selectedPartId === note.target) {
-                                setSelectedPartId(null);
-                                setHighlightedNoteId(null);
-                                selectRef.current(null);
-                                setPendingPoint(null);
-                                setPendingWorldBeacon(null);
-                                setPendingTarget(null);
-                              } else {
-                                setSelectedPartId(note.target);
-                                setHighlightedNoteId(note.id);
-                                selectRef.current(note.target);
-                                triggerCameraFocus(note.target, note.point);
-                              }
-                            }}
-                          >
-                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1, gap: 1 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span className="note-part-badge">{note.target.replace(/^[^/]+\//, '')}</span>
-                                {isMatch && <span className="note-selected-tag">● ACTIVE</span>}
-                              </div>
-                              <span className="note-label-text">{note.label}</span>
-                            </div>
-                            <button
-                              type="button"
-                              className="inspector-note-delete"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteNote(note.id);
-                                if (highlightedNoteId === note.id) setHighlightedNoteId(null);
-                              }}
-                              title="Delete hotspot"
-                            >
-                              ×
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="inspector-empty-notes">
-                      No hotspots placed yet. Click on the model to place a hotspot.
-                    </div>
-                  )}
-                </div>
-
-                {/* Guided Tour Launcher (with fast 3.2s transition rhythm) */}
-                <div style={{ width: '100%' }}>
-                  {tourStops.length >= 2 ? (
-                    <button
-                      type="button"
-                      className={`inspector-tour-toggle-btn ${tourActive ? 'active' : ''}`}
-                      onClick={() => setTourActive((a) => !a)}
-                    >
-                      <span>{tourActive ? '⏹ Exit Tour' : '▶ Start Guided Feature Tour'}</span>
-                      <span style={{ fontSize: 10, opacity: 0.85 }}>({tourStops.length} stops · 3s pace)</span>
-                    </button>
-                  ) : (
-                    <div className="inspector-tour-locked-banner">
-                      Add {2 - tourStops.length} more hotspot{2 - tourStops.length === 1 ? '' : 's'} to unlock guided tour
-                    </div>
-                  )}
-                </div>
-
-                {/* Closeable Assembly Dropdown with search filter */}
-                <div className="inspector-assembly-section">
-                  <button
-                    type="button"
-                    className={`inspector-assembly-header-btn ${showAssembly ? 'open' : ''}`}
-                    onClick={() => setShowAssembly((s) => !s)}
-                  >
-                    <span>✦ Assembly Tree ({parts.length} parts)</span>
-                    <span className="assembly-toggle-indicator">{showAssembly ? 'Hide ▲' : 'Open ▼'}</span>
-                  </button>
-
-                  {showAssembly && (
-                    <div className="inspector-assembly-list">
-                      <div className="assembly-search-input-wrap">
-                        <input
-                          type="text"
-                          className="assembly-search-mini"
-                          placeholder="Filter parts…"
-                          value={assemblyFilter}
-                          onChange={(e) => setAssemblyFilter(e.target.value)}
-                        />
-                        {assemblyFilter && (
-                          <button
-                            type="button"
-                            className="assembly-search-clear"
-                            onClick={() => setAssemblyFilter('')}
-                          >
-                            ×
-                          </button>
-                        )}
-                      </div>
-                      <div className="assembly-scroll-container">
-                        {parts
-                          .filter((p) => {
-                            const name = String(p.metadata?.label ?? p.name).toLowerCase();
-                            return !assemblyFilter || name.includes(assemblyFilter.toLowerCase()) || p.id.toLowerCase().includes(assemblyFilter.toLowerCase());
-                          })
-                          .map((part) => {
-                            const isSelected = selectedPartId === part.id;
-                            const hasNote = notes.some((n) => n.target === part.id);
-                            return (
-                              <button
-                                key={part.id}
-                                type="button"
-                                className={`assembly-part-item ${isSelected ? 'selected' : ''}`}
-                                onClick={() => {
-                                  if (selectedPartId === part.id) {
-                                    setSelectedPartId(null);
-                                    selectRef.current(null);
-                                    setHighlightedNoteId(null);
-                                    setPendingPoint(null);
-                                    setPendingWorldBeacon(null);
-                                    setPendingTarget(null);
-                                  } else {
-                                    setSelectedPartId(part.id);
-                                    selectRef.current(part.id);
-                                    triggerCameraFocus(part.id);
-                                    const match = notes.find((n) => n.target === part.id);
-                                    setHighlightedNoteId(match ? match.id : null);
-                                  }
-                                }}
-                              >
-                                <span className="part-mesh-icon">⬡</span>
-                                <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {String(part.metadata?.label ?? part.name)}
-                                </span>
-                                {hasNote && <span className="assembly-note-dot" title="Has hotspot">●</span>}
-                              </button>
-                            );
-                          })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </aside>
-        )}
-
-        {/* Prominent Gradient Light-Black Upload Button: sits right under Hotspots & Tour in Inspector, or at top-left in other tabs */}
         <button
           type="button"
-          className={`playground-upload-cta ${activeTool === 'inspect' && tourPanelOpen ? 'under-panel' : 'top-left-corner'}`}
+          className="playground-upload-cta top-left-corner"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
           title={`Upload your own 3D model (.glb / .gltf up to ${MAX_MODEL_MB} MB)`}
@@ -2137,7 +1582,7 @@ export function Playground({
       {/* ─── Floating Tool Console (Docked to Bottom-Right on Desktop, Compact on Mobile) ─── */}
       {activeTool && (
         <aside
-          className={`playground-active-console ${consoleMinimized ? 'minimized' : ''} ${activeTool === 'inspect' || activeTool === 'material' || activeTool === 'spatial' || activeTool === 'explode' ? 'inspector-console' : ''}`}
+          className={`playground-active-console ${consoleMinimized ? 'minimized' : ''} ${activeTool === 'material' || activeTool === 'spatial' || activeTool === 'explode' ? 'inspector-console' : ''}`}
           role="region"
           aria-label="Active Tool Console"
         >
@@ -2154,7 +1599,6 @@ export function Playground({
               style={{ cursor: 'pointer' }}
             >
               <strong>
-                {activeTool === 'inspect' && '✦ 3D HOTSPOT & ASSET INSPECTOR'}
                 {activeTool === 'material' && '✦ MATERIAL & SURFACE LAB'}
                 {activeTool === 'light' && '✦ INSPECTION SPOTLIGHT RIG'}
                 {activeTool === 'gimbal' && '✦ 3D FLIGHT GIMBAL TRACKER'}
@@ -2164,7 +1608,6 @@ export function Playground({
                 {activeTool === 'slicer' && '✦ CROSS-SECTION SLICING PLANE'}
               </strong>
               <span>
-                {activeTool === 'inspect' && `${notes.length} HOTSPOT${notes.length === 1 ? '' : 'S'} SAVED · EXPORT / ATTACH`}
                 {activeTool === 'material' && `SHADER: ${surfaceMode.toUpperCase()} · ROUGHNESS: ${Math.round(surfaceRoughness * 100)}% · METAL: ${Math.round(surfaceMetalness * 100)}%`}
                 {activeTool === 'light' && `ORBIT: ${Math.round(lightDial * 360)}° · BRIGHTNESS: ${Math.round(lightBrightness * 100)}% · HEIGHT: ${(0.35 + lightHeight * 3.75).toFixed(1)}m`}
                 {activeTool === 'gimbal' && `AIM: [${(targetAim.x * 100).toFixed(0)}, ${(targetAim.y * 100).toFixed(0)}] · ${isTargetLocked ? 'LOCKED' : 'TRACKING'} · COLOR: ${gimbalBg}`}
@@ -2301,191 +1744,6 @@ export function Playground({
                     <span>Reset Surface Shaders</span>
                     <span>↺</span>
                   </button>
-                </div>
-              </div>
-            )}
-            {/* 3D Inspector: Contextual Hotspot Creator & Persistence / Export Suite */}
-            {activeTool === 'inspect' && (
-              <div className="inspector-console-wrap" style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {/* Quick button to expand Tour & Hotspots panel if collapsed */}
-                {tourPanelMinimized && (
-                  <button
-                    type="button"
-                    className="inspector-reopen-panel-btn"
-                    onClick={() => setTourPanelMinimized(false)}
-                    title="Expand Hotspots & Tour panel"
-                  >
-                    <span>✦ Expand Hotspots & Tour Panel</span>
-                    <span style={{ fontSize: 10 }}>({notes.length} stops)</span>
-                  </button>
-                )}
-
-                {/* 1. Hotspot Input Box (Contextual: Appears when user clicks surface to add a hotspot) */}
-                {pendingPoint ? (
-                  <div className="inspector-anchor-box">
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <span style={{ font: '700 10.5px "JetBrains Mono", monospace', color: '#38bdf8' }}>
-                        ✦ ATTACH TO {pendingTarget?.replace(/^[^/]+\//, '').toUpperCase()}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPendingPoint(null);
-                          setPendingTarget(null);
-                          setSelectedPartId(null);
-                          selectRef.current(null);
-                          setDraftLabel('');
-                        }}
-                        style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13 }}
-                        title="Cancel"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <input
-                        type="text"
-                        className="inspector-text-input"
-                        placeholder="Describe this hotspot…"
-                        value={draftLabel}
-                        onChange={(e) => setDraftLabel(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveHotspot();
-                        }}
-                        autoFocus
-                      />
-                      <button
-                        type="button"
-                        className="inspector-primary-btn"
-                        onClick={handleSaveHotspot}
-                        disabled={!draftLabel.trim()}
-                      >
-                        Attach ↗
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="inspector-hint-pill" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {selectedPartId ? (
-                        <>Part: <strong>{selectedPartId.replace(/^[^/]+\//, '')}</strong></>
-                      ) : (
-                        '💡 Click any part on the model to attach a hotspot'
-                      )}
-                    </span>
-                    {selectedPartId && (
-                      <button
-                        type="button"
-                        className="inspector-deselect-btn"
-                        onClick={() => {
-                          setSelectedPartId(null);
-                          selectRef.current(null);
-                          setHighlightedNoteId(null);
-                          setPendingPoint(null);
-                          setPendingWorldBeacon(null);
-                          setPendingTarget(null);
-                        }}
-                        title="Deselect active part"
-                      >
-                        ✕ Deselect
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Background Color Switcher */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: '100%', paddingTop: 6, borderTop: '1px solid rgba(148, 163, 184, 0.15)' }}>
-                  <span style={{ font: '700 9px "JetBrains Mono", monospace', color: '#64748b', letterSpacing: '0.6px' }}>
-                    BACKGROUND COLOR
-                  </span>
-                  <div
-                    className="gimbal-color-line"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      width: '100%',
-                      padding: '2px 0',
-                    }}
-                  >
-                    {FIXED_GIMBAL_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        className={`palette-swatch ${canvasBg.toLowerCase() === c.toLowerCase() ? 'active' : ''}`}
-                        style={{
-                          backgroundColor: c,
-                          width: 18,
-                          height: 18,
-                          minWidth: 18,
-                          minHeight: 18,
-                          padding: 0,
-                          flexShrink: 0,
-                        }}
-                        onClick={() => {
-                          setCustomStudioBg(c);
-                          setHexInputText(c.replace('#', ''));
-                        }}
-                        aria-label={`Set inspector background ${c}`}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                {/* 2. Storage, Import/Export & Integration matching user screenshot */}
-                <div className="inspector-storage-section">
-                  <div className="inspector-storage-status">
-                    <span className="status-dot green" />
-                    <span>Notes saved on this device</span>
-                  </div>
-
-                  <div className="inspector-storage-actions">
-                    <button
-                      type="button"
-                      className="inspector-action-link"
-                      onClick={() => noteFileInputRef.current?.click()}
-                    >
-                      Import notes ↑
-                    </button>
-                    <button
-                      type="button"
-                      className="inspector-action-link"
-                      onClick={handleExportNotes}
-                    >
-                      Export notes ↓
-                    </button>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="inspector-react-cta"
-                    onClick={handleOpenGuide}
-                  >
-                    <span>Use in your React site</span>
-                    <span>↗</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="inspector-download-glb-btn"
-                    onClick={handleDownloadModel}
-                  >
-                    <span>Download Model (.glb)</span>
-                    <span>⤓</span>
-                  </button>
-
-                  {model.object && (
-                    <button
-                      type="button"
-                      className="inspector-download-glb-btn"
-                      onClick={onDemo}
-                      title="Return to default model"
-                    >
-                      <span>Back to Default Model</span>
-                      <span>↶</span>
-                    </button>
-                  )}
                 </div>
               </div>
             )}
@@ -2964,16 +2222,7 @@ export function Playground({
       {/* ─── Floating 3D Space Dock (Centered at bottom, touch-scrollable on mobile) ─── */}
       <div className="playground-dock-container">
         <nav className="playground-floating-dock" aria-label="Playground tools dock">
-          {/* Segment: Inspector (FIRST item in dock) */}
-          <button
-            type="button"
-            className={`dock-item-btn ${activeTool === 'inspect' ? 'active' : ''}`}
-            onClick={() => selectTool('inspect')}
-            title="3D Hotspot & Tour Inspector"
-          >
-            <IconInspector />
-            <span>Inspector</span>
-          </button>
+          {/* Segment 1: Material & Surface Lab */}
           <button
             type="button"
             className={`dock-item-btn ${activeTool === 'material' ? 'active' : ''}`}
@@ -3072,28 +2321,6 @@ export function Playground({
         </div>
 
         <SmoothScrollArea className="sidebar-content">
-          {/* 3D Hotspot & Guided Tour Inspector */}
-          <div className="sidebar-section">
-            <span className="sidebar-section-title">Inspection & Hotspots</span>
-            <button
-              type="button"
-              className={`sidebar-tool-card ${activeTool === 'inspect' ? 'active' : ''}`}
-              onClick={() => {
-                selectTool('inspect');
-                setSidebarOpen(false);
-              }}
-            >
-              <div className="sidebar-tool-main">
-                <div className="sidebar-tool-icon"><IconInspector /></div>
-                <div className="sidebar-tool-text">
-                  <strong>3D Inspector</strong>
-                  <span>Hotspots, guided tour & parts</span>
-                </div>
-              </div>
-              <span className="sidebar-tool-status">{activeTool === 'inspect' ? 'ACTIVE' : 'SELECT'}</span>
-            </button>
-          </div>
-
           {/* Surface & Topology Lab */}
           <div className="sidebar-section">
             <span className="sidebar-section-title">Surface & Topology</span>

@@ -4838,6 +4838,11 @@ button, a { transition: background .15s, color .15s, border-color .15s; }
   }
 }
 
+.playground-upload-cta.top-left-corner {
+  width: auto;
+  min-width: 224px;
+}
+
 /* Studio Snapshot Button & Row */
 .studio-snapshot-row {
   width: 100%;
