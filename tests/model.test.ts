@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BoxGeometry, Group, Mesh, MeshStandardMaterial, Vector3 } from 'three';
+import { BoxGeometry, Group, Mesh, MeshStandardMaterial, SphereGeometry, Vector3 } from 'three';
 import { createModelInstance, partCenter, resolvePart } from '../src/react/model';
 import { parseNotes } from '../examples/inspector/notes';
 
@@ -84,4 +84,29 @@ test('model instance preserves mesh baseline position for exploded view', () => 
   const record = instance.records[0];
   assert.ok(record.object.userData._skOriginalPosition instanceof Vector3);
   assert.deepEqual(record.object.userData._skOriginalPosition, new Vector3(2, 3, 4));
+});
+
+test('single-mesh semantic segmentation is opt-in and partitions dense geometry cleanly', () => {
+  const group = new Group();
+  const denseMesh = new Mesh(new SphereGeometry(1.5, 16, 12), new MeshStandardMaterial({ color: 'gray' }));
+  denseMesh.name = 'robot_mesh';
+  group.add(denseMesh);
+
+  const defaultInstance = createModelInstance(group, 'robot-default');
+  assert.equal(defaultInstance.records.length, 1);
+  assert.equal(defaultInstance.records[0].part.name, 'robot_mesh');
+  defaultInstance.dispose();
+
+  const segmentedInstance = createModelInstance(group, 'robot-seg', {
+    modelName: 'Quadruped Robot',
+    segmentSingleMesh: true,
+  });
+  assert.ok(segmentedInstance.records.length > 1);
+  const ids = segmentedInstance.records.map((r) => r.part.id);
+  assert.equal(new Set(ids).size, segmentedInstance.records.length);
+  for (const record of segmentedInstance.records) {
+    assert.equal(record.object.geometry.attributes.position, denseMesh.geometry.attributes.position);
+    assert.equal(record.object.userData._skSyntheticSplit, true);
+  }
+  segmentedInstance.dispose();
 });

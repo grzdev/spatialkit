@@ -9,6 +9,6 @@
     "baseUrl": "../..",
     "paths": { "spatialkit/react": ["src/react/index.ts"] }
   },
-  "include": ["./*.tsx", "./notes.ts"],
+  "include": ["./*.tsx", "./components/**/*.tsx", "./model-files.ts", "./notes.ts"],
   "exclude": []
 }

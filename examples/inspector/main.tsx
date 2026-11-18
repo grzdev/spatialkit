@@ -27,7 +27,7 @@ import {
   type SurfaceHit,
 } from 'spatialkit/react';
 import { INITIAL_NOTES, parseNotes, notesKey, annotationOffset, loadNotesFromStorage, type Note } from './notes';
-import { DEMO_MODEL, MAX_MODEL_MB, MODEL_FIT, prepareModel, prepareModelFromUrl, type ModelAsset, type ModelUploadProgress } from './model-files';
+import { DEMO_MODEL, MAX_MODEL_MB, MODEL_FIT, downloadModelFromSource, prepareModel, prepareModelFromUrl, type ModelAsset, type ModelUploadProgress } from './model-files';
 import { generateComponent, publicFilename, INSTALL_COMMAND } from './integration';
 import {
   ControlsLab,
@@ -343,15 +343,18 @@ function applyTheme(theme: 'light' | 'dark') {
   });
 }
 
-// ─── Interactive 3D Model Rig (Control Lab tools applied to loaded model) ───
-export type ActiveModelControl = 'none' | 'light' | 'target' | 'lift' | 'scrub';
+// ─── Interactive 3D Model Rig (Control Lab & Spatial Physics tools applied to loaded model) ───
+export type ActiveModelControl = 'none' | 'light' | 'target' | 'lift' | 'scrub' | 'spatial';
 
 export function InteractiveModelRig({
   activeControl,
   lightDial,
   lightBrightness = 0.55,
   lightHeight = 0.55,
-  liftHeight,
+  liftHeight = 0,
+  zeroGEnabled = false,
+  manualAltitude = 0,
+  dropTestTrigger = 0,
   ballPositionRef,
   children,
 }: {
@@ -359,26 +362,133 @@ export function InteractiveModelRig({
   lightDial: number;
   lightBrightness?: number;
   lightHeight?: number;
-  liftHeight: number;
+  liftHeight?: number;
+  zeroGEnabled?: boolean;
+  manualAltitude?: number;
+  dropTestTrigger?: number;
   ballPositionRef?: React.MutableRefObject<Vector3>;
   children: ReactNode;
 }) {
   const levitationRef = useRef<Group>(null);
   const pistonRef = useRef<Mesh>(null);
   const spotLightRef = useRef<SpotLight>(null);
+  const emitterRingRef = useRef<Mesh>(null);
+  const shockwaveRingRef = useRef<Mesh>(null);
 
-  useFrame(({ clock }) => {
+  const dropPhysicsRef = useRef<{
+    active: boolean;
+    y: number;
+    vy: number;
+    bounces: number;
+    shockwave: number;
+    lastTrigger: number;
+  }>({
+    active: false,
+    y: 0,
+    vy: 0,
+    bounces: 0,
+    shockwave: 0,
+    lastTrigger: 0,
+  });
+
+  // Immediately reset rig transform when switching away so Spatial Rig starts upright at center
+  useEffect(() => {
+    dropPhysicsRef.current.active = false;
+    dropPhysicsRef.current.vy = 0;
+    dropPhysicsRef.current.y = 0;
+    dropPhysicsRef.current.shockwave = 0;
+    if (levitationRef.current && activeControl !== 'target') {
+      levitationRef.current.position.set(0, 0, 0);
+      levitationRef.current.rotation.set(0, 0, 0);
+    }
+  }, [activeControl]);
+
+  useEffect(() => {
+    if (dropTestTrigger > 0 && dropTestTrigger !== dropPhysicsRef.current.lastTrigger) {
+      dropPhysicsRef.current.lastTrigger = dropTestTrigger;
+      dropPhysicsRef.current.active = true;
+      dropPhysicsRef.current.y = 2.05;
+      dropPhysicsRef.current.vy = 0;
+      dropPhysicsRef.current.bounces = 0;
+      dropPhysicsRef.current.shockwave = 0;
+    }
+  }, [dropTestTrigger]);
+
+  useFrame(({ clock }, delta) => {
     if (!levitationRef.current) return;
+    const dt = Math.min(delta, 0.05);
+    const t = clock.getElapsedTime();
+
     if (activeControl === 'target') {
-      const t = clock.getElapsedTime() * 1.35;
+      const ft = t * 1.25;
       // High-mobility dynamic 3D flight across space (top corners, close, deep, floor)
-      const bx = Math.sin(t * 0.95) * 3.4 + Math.cos(t * 2.2) * 1.2;
-      const by = 2.0 + Math.sin(t * 1.5) * 1.6 + Math.cos(t * 0.7) * 0.8;
-      const bz = Math.cos(t * 0.85) * 2.6 + Math.sin(t * 1.8) * 1.2;
+      const bx = Math.sin(ft * 0.95) * 3.4 + Math.cos(ft * 2.2) * 1.2;
+      const by = 1.65 + Math.sin(ft * 1.5) * 1.35 + Math.cos(ft * 0.7) * 0.65;
+      const bz = Math.cos(ft * 0.85) * 2.6 + Math.sin(ft * 1.8) * 1.2;
       levitationRef.current.position.set(bx, by, bz);
-      levitationRef.current.rotation.set(t * 2.4, t * 3.1, Math.sin(t * 1.3) * 1.4);
+      // Agile banking & yaw so the 3D model stays upright-oriented while flying
+      levitationRef.current.rotation.set(
+        Math.sin(ft * 1.4) * 0.25,
+        ft * 1.1,
+        Math.cos(ft * 1.1) * 0.28
+      );
       if (ballPositionRef) {
-        ballPositionRef.current.set(bx, by, bz);
+        // Track center of the flying model (offset by +0.45m in Y)
+        ballPositionRef.current.set(bx, by + 0.45, bz);
+      }
+    } else if (activeControl === 'spatial') {
+      const phys = dropPhysicsRef.current;
+      if (phys.active) {
+        phys.vy -= 15.5 * dt;
+        phys.y += phys.vy * dt;
+        if (phys.y <= 0) {
+          phys.y = 0;
+          if (Math.abs(phys.vy) > 0.85 && phys.bounces < 5) {
+            phys.vy = -phys.vy * 0.52;
+            phys.bounces += 1;
+            phys.shockwave = 1.0;
+          } else {
+            phys.vy = 0;
+            phys.active = false;
+            phys.shockwave = 0.8;
+          }
+        }
+        levitationRef.current.position.set(0, phys.y, 0);
+        const tilt = Math.sin(phys.bounces * 2.2) * Math.min(0.08, Math.abs(phys.vy) * 0.012);
+        levitationRef.current.rotation.set(tilt, 0, -tilt * 0.7);
+      } else if (zeroGEnabled) {
+        const hoverY = 0.42 + manualAltitude + Math.sin(t * 2.1) * 0.12;
+        levitationRef.current.position.y += (hoverY - levitationRef.current.position.y) * 0.14;
+        levitationRef.current.position.x = 0;
+        levitationRef.current.position.z = 0;
+        levitationRef.current.rotation.set(
+          Math.sin(t * 1.35) * 0.045,
+          Math.sin(t * 0.65) * 0.08,
+          Math.cos(t * 1.1) * 0.045
+        );
+      } else {
+        const goalY = manualAltitude;
+        levitationRef.current.position.y += (goalY - levitationRef.current.position.y) * 0.18;
+        levitationRef.current.position.x = 0;
+        levitationRef.current.position.z = 0;
+        levitationRef.current.rotation.set(0, 0, 0);
+      }
+
+      if (emitterRingRef.current) {
+        const pulse = 1 + Math.sin(t * 3.2) * 0.04;
+        emitterRingRef.current.scale.set(pulse, pulse, 1);
+      }
+      if (shockwaveRingRef.current) {
+        if (phys.shockwave > 0.01) {
+          phys.shockwave = Math.max(0, phys.shockwave - dt * 2.2);
+          const expand = 1 + (1 - phys.shockwave) * 1.85;
+          shockwaveRingRef.current.visible = true;
+          shockwaveRingRef.current.scale.set(expand, expand, 1);
+          const mat = shockwaveRingRef.current.material as { opacity?: number };
+          if (mat) mat.opacity = phys.shockwave * 0.75;
+        } else {
+          shockwaveRingRef.current.visible = false;
+        }
       }
     } else if (activeControl === 'lift') {
       // Minimum height rests flat on 3D grid line (y = 0.08), maximum extends up to 3.4m high!
@@ -395,6 +505,7 @@ export function InteractiveModelRig({
         pistonRef.current.scale.set(1, Math.max(0.01, curY - 0.08), 1);
       }
     } else {
+      dropPhysicsRef.current.active = false;
       if (
         levitationRef.current.position.x !== 0 ||
         levitationRef.current.position.y !== 0 ||
@@ -412,8 +523,9 @@ export function InteractiveModelRig({
     }
   });
 
-  // When lightDial is 1.0 (all the way to the right), light shines directly at the front face of the model!
-  const lightAngle = (lightDial - 0.875) * Math.PI * 2;
+  // At lightDial = 0 (0 deg), spotlight starts shining directly at the front face of the model,
+  // and as lightDial increases clockwise (0 -> 1), the 3D spotlight orbits CLOCKWISE around the stage!
+  const lightAngle = (0.125 - lightDial) * Math.PI * 2;
   const lightRadius = 3.2;
   const lightY = 0.35 + lightHeight * 3.75;
   const lightTargetY = 0.25 + lightHeight * 1.35;
@@ -470,6 +582,25 @@ export function InteractiveModelRig({
           <mesh ref={pistonRef} position={[0, 0.08, 0]}>
             <cylinderGeometry args={[0.26, 0.26, 1, 32]} />
             <meshStandardMaterial color="#cbd5e1" metalness={0.98} roughness={0.08} />
+          </mesh>
+        </group>
+      )}
+
+      {activeControl === 'spatial' && (
+        <group position={[0, 0.008, 0]}>
+          {/* Glowing Zero-G / Spatial Emitter Ring on the floor */}
+          <mesh ref={emitterRingRef} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[1.18, 1.24, 64]} />
+            <meshBasicMaterial color="#38bdf8" transparent opacity={zeroGEnabled || manualAltitude > 0.02 ? 0.65 : 0.25} />
+          </mesh>
+          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.72, 0.75, 48]} />
+            <meshBasicMaterial color="#2dd4bf" transparent opacity={zeroGEnabled || manualAltitude > 0.02 ? 0.45 : 0.16} />
+          </mesh>
+          {/* Impact Shockwave Ring when Gravity Drop Test bounces */}
+          <mesh ref={shockwaveRingRef} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
+            <ringGeometry args={[0.95, 1.08, 64]} />
+            <meshBasicMaterial color="#38bdf8" transparent opacity={0.75} />
           </mesh>
         </group>
       )}
@@ -896,15 +1027,17 @@ function Workbench({ model, onUpload, onDemo, uploading, uploadProgress, uploadE
     setShowNotes(true);
   }
 
-  async function downloadModel() {
+  async function downloadModel(): Promise<string | void> {
     try {
-      const blob = model.file ?? await fetch('/pump.glb').then((response) => {
-        if (!response.ok) throw new Error('Model download failed');
-        return response.blob();
+      return await downloadModelFromSource({
+        file: model.file,
+        sourceUrl: model.sourceUrl,
+        fallbackPath: '/pump.glb',
+        nameOrFilename: model.object ? (model.filename || model.name) : model.filename,
       });
-      if (!blob) throw new Error('Model download failed');
-      download(blob, publicFilename(model.filename));
-    } catch { setStorageState('Model download failed. Please try again.'); }
+    } catch {
+      setStorageState('Model download failed. Please try again.');
+    }
   }
 
   const visibleParts  = parts.filter((p) =>

@@ -58,9 +58,15 @@ export function DialControl({
   } | null>(null);
   const [active, setActive] = useState(false);
   const range = max - min;
+  const isFullCircle = Math.abs(maxAngle - minAngle) >= 360;
+  const normalizeValue = (v: number) => {
+    if (!isFullCircle || range <= 0) return clamp(v, min, max);
+    const wrapped = ((((v - min) % range) + range) % range) + min;
+    return wrapped;
+  };
   const progress = range > 0 ? clamp((value - min) / range, 0, 1) : 0;
   const angle = minAngle + progress * (maxAngle - minAngle);
-  const set = (next: number) => onChange(snap(next, min, max, step));
+  const set = (next: number) => onChange(snap(normalizeValue(next), min, max, step));
 
   const getPointerAngle = (clientX: number, clientY: number, centerX: number, centerY: number) => {
     const dx = clientX - centerX;
@@ -130,8 +136,8 @@ export function DialControl({
           if (deltaAngle < -180) deltaAngle += 360;
           current.lastAngle = nextAngle;
           const span = Math.max(1, maxAngle - minAngle);
-          // Solid mechanical stops at min and max: never wraps around across 6 o'clock
-          const nextValue = clamp(current.value + (deltaAngle / span) * range, min, max);
+          // Full-circle orbit dials wrap seamlessly clockwise/counter-clockwise; bounded dials stop at min/max
+          const nextValue = normalizeValue(current.value + (deltaAngle / span) * range);
           current.value = nextValue;
           set(nextValue);
         } else {

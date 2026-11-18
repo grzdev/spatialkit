@@ -1,6 +1,6 @@
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { LoadingManager, Mesh, Texture, type AnimationClip, type Object3D, type Material } from 'three';
-import { createModelInstance, modelFit } from '../../src/react/model';
+import { compressAndOptimizeModelScene, createModelInstance, modelFit } from '../../src/react/model';
 
 export const MAX_MODEL_MB = 500;
 export const MAX_MODEL_BYTES = MAX_MODEL_MB * 1024 * 1024;
@@ -20,6 +20,7 @@ export interface ModelAsset {
   animations?: readonly AnimationClip[];
   hasAnimations?: boolean;
   file?: File;
+  sourceUrl?: string;
   dispose?: () => void;
 }
 export const DEMO_MODEL: ModelAsset = { id: 'pump', name: 'PX–04 Pump', filename: 'pump.glb', format: 'GLB', hasAnimations: true };
@@ -155,10 +156,11 @@ export async function prepareModel(
 
   const gltf = await new GLTFLoader(manager).parseAsync(bytes, '');
   try {
-    onProgress?.({ percent: 92, stage: 'Fitting assembly to 3D viewport…' });
+    onProgress?.({ percent: 90, stage: 'Compressing textures & optimizing 3D mesh…' });
     if (onProgress && typeof window !== 'undefined') {
       await new Promise((r) => setTimeout(r, 16));
     }
+    compressAndOptimizeModelScene(gltf.scene);
     modelFit(gltf.scene, MODEL_FIT);
     gltf.scene.traverse((child) => {
       if ((child as Mesh).isMesh) {
@@ -182,18 +184,63 @@ export async function prepareModel(
   };
 }
 
+export async function fetchModelBlob(url: string): Promise<Blob> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not load model from URL (${response.status})`);
+  return response.blob();
+}
+
+export function toGlbDownloadFilename(nameOrFilename?: string): string {
+  const safe = (nameOrFilename || 'model')
+    .replace(/[^a-zA-Z0-9._-]/g, '-')
+    .replace(/^\.+/, '')
+    .replace(/\.(glb|gltf)$/i, '');
+  return `${safe || 'model'}.glb`;
+}
+
+export function downloadModelBlob(blob: Blob, nameOrFilename?: string): string {
+  const filename = toGlbDownloadFilename(nameOrFilename);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return filename;
+}
+
+/** Download a GLB from an in-memory File, remote sourceUrl, or local static fallback path. */
+export async function downloadModelFromSource(options: {
+  file?: File;
+  sourceUrl?: string;
+  fallbackPath?: string;
+  nameOrFilename?: string;
+}): Promise<string> {
+  let blob: Blob | undefined = options.file;
+  if (!blob && options.sourceUrl) {
+    blob = await fetchModelBlob(options.sourceUrl);
+  }
+  if (!blob && options.fallbackPath) {
+    blob = await fetchModelBlob(options.fallbackPath);
+  }
+  if (!blob) throw new Error('Model download failed');
+  return downloadModelBlob(blob, options.nameOrFilename);
+}
+
 export async function prepareModelFromUrl(
   url: string,
   defaultName?: string,
   onProgress?: (progress: ModelUploadProgress) => void
 ): Promise<ModelAsset> {
   onProgress?.({ percent: 5, stage: 'Downloading 3D model…' });
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Could not load model from URL (${response.status})`);
-  const blob = await response.blob();
+  const blob = await fetchModelBlob(url);
   const cleanUrl = url.split('?')[0].split('#')[0];
   const urlFilename = cleanUrl.split('/').pop() || 'model.glb';
   const filename = defaultName || (urlFilename.endsWith('.glb') || urlFilename.endsWith('.gltf') ? urlFilename : `${urlFilename}.glb`);
   const file = new File([blob], filename, { type: blob.type || 'model/gltf-binary' });
-  return prepareModel(file, onProgress);
+  const asset = await prepareModel(file, onProgress);
+  return {
+    ...asset,
+    sourceUrl: /^https?:\/\//i.test(url) ? url : undefined,
+  };
 }
